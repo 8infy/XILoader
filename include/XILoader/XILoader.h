@@ -1,58 +1,45 @@
 #include <string>
 #include <vector>
 
-struct XRGBPixel
-{
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-    uint8_t a;
-
-    operator uint8_t*()
-    {
-        return &r;
-    }
-};
-
-struct XRGBAPixel
-{
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-
-    operator uint8_t*()
-    {
-        return &r;
-    }
-};
-
 struct XImageViewer
 {
+public:
+    friend class XImage;
+private:
     std::vector<uint8_t>& m_Data;
     uint16_t m_RequestedX;
+    uint16_t m_Width;
+    uint8_t m_Components;
 
-    XImageViewer(std::vector<uint8_t>& data, uint16_t xcoord)
-        : m_Data(data), m_RequestedX(xcoord)
+    XImageViewer(
+        std::vector<uint8_t>& data,
+        uint16_t width,
+        uint8_t component_count,
+        uint16_t xcoord
+    )
+        : m_Data(data),
+        m_RequestedX(xcoord),
+        m_Width(width),
+        m_Components(component_count)
     {
     }
-
-    XRGBPixel y(uint16_t ycoord)
+public:
+    uint8_t* at_y(uint16_t y)
     {
-        return { m_Data[0], m_Data[1], m_Data[3] };
+        auto pixel_loc = m_Width * y;
+        pixel_loc += m_RequestedX;
+        pixel_loc *= m_Components;
+
+        return &m_Data[pixel_loc];
     }
 
-    XRGBPixel operator[](uint16_t ycoord)
+    uint8_t* operator[](uint16_t ycoord)
     {
-        return y(ycoord);
-    }
-
-    operator uint8_t*()
-    {
-        return &m_Data[0];
+        return at_y(ycoord);
     }
 };
 
-struct XImage
+class XImage
 {
 public:
     enum Format
@@ -63,6 +50,11 @@ public:
     };
 
     friend class XILoader;
+public:
+    XImage(XImage&& other)                 = default;
+    XImage& operator=(XImage&& other)      = default;
+    XImage(const XImage& other)            = delete;
+    XImage& operator=(const XImage& other) = delete;
 private:
     XImage() = default;
 private:
@@ -101,9 +93,14 @@ public:
         return m_Height;
     }
 
+    XImageViewer at_x(uint16_t x)
+    {
+        return XImageViewer(m_Data, m_Width, m_Format, x);
+    }
+
     XImageViewer operator[](uint16_t xcoord)
     {
-        return XImageViewer(m_Data, xcoord);
+        return at_x(xcoord);
     }
 };
 
