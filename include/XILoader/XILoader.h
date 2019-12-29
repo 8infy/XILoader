@@ -1,5 +1,6 @@
 #include <string>
 #include <vector>
+#include <assert.h>
 
 struct XImageViewer
 {
@@ -56,7 +57,12 @@ public:
     XImage(const XImage& other)            = delete;
     XImage& operator=(const XImage& other) = delete;
 private:
-    XImage() = default;
+    XImage() 
+        : m_Width(0),
+        m_Height(0),
+        m_Format(UNKNOWN)
+    {
+    }
 private:
     std::vector<uint8_t> m_Data;
     uint16_t m_Width;
@@ -107,7 +113,7 @@ public:
 class XILoader
 {
 private:
-    enum class ImageFormat
+    enum class FileFormat
     {
         UNKNOWN = 0,
         BMP = 1
@@ -127,7 +133,7 @@ public:
 
         switch (deduce_file_format(file))
         {
-        case ImageFormat::BMP:
+        case FileFormat::BMP:
             BMP::load(file, image);
             break;
         }
@@ -137,7 +143,7 @@ public:
         return image;
     }
 private:
-    static ImageFormat deduce_file_format(FILE* file)
+    static FileFormat deduce_file_format(FILE* file)
     {
         auto h1 = fgetc(file);
         auto h2 = fgetc(file);
@@ -145,24 +151,101 @@ private:
         ungetc(h1, file);
 
         if (h1 == 'B' && h2 == 'M')
-            return ImageFormat::BMP;
+            return FileFormat::BMP;
         else
-            return ImageFormat::UNKNOWN;
+            return FileFormat::UNKNOWN;
     }
 
     class BMP
     {
+    private:
+        enum dib_type
+        {
+            UNKNOWN           = 0,
+            BITMAPCOREHEADER  = 12,
+            OS21XBITMAPHEADER = 12,
+            BITMAPINFOHEADER  = 40
+        };
     public:
         static void load(FILE* file, XImage& image)
         {
-            image.m_Format = XImage::RGB;
+            uint8_t header[14];
+            auto bytes_read = fread_s(header, 14, 1, 14, file);
+            if (!bytes_read) return;
 
-            uint8_t info[54];
-            fread(info, sizeof(uint8_t), 54, file);
+            // pixel array offset
+            uint32_t pao = *reinterpret_cast<uint32_t*>(&header[10]);
 
-            image.m_Width = *reinterpret_cast<int32_t*>(&info[18]);
-            image.m_Height = abs(*reinterpret_cast<int32_t*>(&info[22]));
+            uint32_t dib_size;
+            bytes_read = fread_s(&dib_size, 4, 4, 1, file);
+            if (!bytes_read) return;
 
+            switch (dib_size)
+            {
+            case BITMAPCOREHEADER | OS21XBITMAPHEADER:
+                load_as<BITMAPCOREHEADER>(file, image, pao);
+                break;
+            case BITMAPINFOHEADER:
+                load_as<BITMAPINFOHEADER>(file, image, pao);
+            }
+        }
+    private:
+        template<size_t>
+        static void load_as(FILE* file, XImage& image, uint32_t pao) {}
+
+        template<>
+        static void load_as<BITMAPCOREHEADER>(FILE* file, XImage& image, uint32_t pao)
+        {
+
+        }
+
+        template<>
+        static void load_as<BITMAPINFOHEADER>(FILE* file, XImage& image, uint32_t pao)
+        {
+            XImage itempo;
+
+            uint8_t dib[36];
+            auto bytes_read = fread_s(dib, 36, 1, 36, file);
+            if (!bytes_read) return;
+
+            // width/height
+            itempo.m_Width = *reinterpret_cast<int32_t*>(&dib[0]);
+            itempo.m_Height = abs(*reinterpret_cast<int32_t*>(&dib[4]));
+
+            // number of color planes
+            if (*reinterpret_cast<uint16_t*>(&dib[8]) != 1) return;
+
+            // bytes per pixel
+            uint16_t bpp = *reinterpret_cast<uint16_t*>(&dib[10]);
+            // only 24bpp bmps for now
+            if (bpp != 24) return;
+            itempo.m_Format = XImage::RGB;
+
+            uint32_t compression_method = *reinterpret_cast<uint32_t*>(&dib[12]);
+            // no compressed bmp support for now
+            if (compression_method) return;
+
+            // skip N bytes to get to the pixel array
+            auto pixel_array_gap = pao - 54;
+            if (pixel_array_gap) fseek(file, pixel_array_gap, SEEK_CUR);
+
+            bool success = false;
+            switch (bpp)
+            {
+            case 24:
+                success = load_pixel_array<24>(file, itempo);
+            }
+
+            if (success)
+                image = std::move(itempo);
+        }
+
+        template<uint16_t bpp>
+        static bool load_pixel_array(FILE* file, XImage& image) {}
+
+        template<>
+        static bool load_pixel_array<24>(FILE* file, XImage& image) 
+        {
             int32_t row_padded = (image.m_Width * 3 + 3) & (~3);
             image.m_Data.resize(3ull * image.m_Width * image.m_Height);
 
@@ -191,6 +274,8 @@ private:
             }
 
             delete[] row_buffer;
+
+            return true;
         }
     };
 
