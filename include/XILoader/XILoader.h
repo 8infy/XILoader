@@ -2,6 +2,12 @@
 #include <vector>
 #include <assert.h>
 
+#ifdef _WIN32
+    #define XIL_READ_EXACTLY(bytes, dest, dest_size, file) (bytes == fread_s(dest, dest_size, sizeof(uint8_t), bytes, file))
+#else
+    #define XIL_READ_EXACTLY(bytes, dest, dest_size, file) (bytes == fread(dest, sizeof(uint8_t), bytes, file))
+#endif
+
 struct XImageViewer
 {
 public:
@@ -156,11 +162,6 @@ private:
             return FileFormat::UNKNOWN;
     }
 
-    static bool is_equal(size_t l, size_t r)
-    {
-        return r == l;
-    }
-
     class BMP
     {
     private:
@@ -175,15 +176,13 @@ private:
         static void load(FILE* file, XImage& image)
         {
             uint8_t header[14];
-            auto bytes_read = fread_s(header, 14, 1, 14, file);
-            if (!is_equal(bytes_read, 14)) return;
+            if (!XIL_READ_EXACTLY(14, header, 14, file)) return;
 
             // pixel array offset
             uint32_t pao = *reinterpret_cast<uint32_t*>(&header[10]);
 
             uint32_t dib_size;
-            auto four_bytes_read = fread_s(&dib_size, 4, 4, 1, file);
-            if (!is_equal(four_bytes_read, 1)) return;
+            if (!XIL_READ_EXACTLY(4, &dib_size, 4, file)) return;
 
             // BMP dib type is distiguished by its size
             switch (dib_size)
@@ -211,8 +210,7 @@ private:
             XImage itempo;
 
             uint8_t dib[36];
-            auto bytes_read = fread_s(dib, 36, 1, 36, file);
-            if (!is_equal(bytes_read, 36)) return;
+            if (!XIL_READ_EXACTLY(36, dib, 36, file)) return;
 
             // width/height
             itempo.m_Width = *reinterpret_cast<int32_t*>(&dib[0]);
@@ -268,8 +266,7 @@ private:
 
             for (size_t i = 0; i < image.m_Height; i++)
             {
-                auto bytes_read = fread_s(row_buffer, row_padded, sizeof(uint8_t), row_padded, file);
-                if (!is_equal(bytes_read, row_padded))
+                if (!XIL_READ_EXACTLY(row_padded, row_buffer, row_padded, file))
                 {
                     result = false;
                     break;
