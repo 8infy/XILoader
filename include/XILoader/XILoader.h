@@ -156,6 +156,11 @@ private:
             return FileFormat::UNKNOWN;
     }
 
+    static bool is_equal(size_t l, size_t r)
+    {
+        return r == l;
+    }
+
     class BMP
     {
     private:
@@ -171,19 +176,20 @@ private:
         {
             uint8_t header[14];
             auto bytes_read = fread_s(header, 14, 1, 14, file);
-            if (!bytes_read) return;
+            if (!is_equal(bytes_read, 14)) return;
 
             // pixel array offset
             uint32_t pao = *reinterpret_cast<uint32_t*>(&header[10]);
 
             uint32_t dib_size;
-            bytes_read = fread_s(&dib_size, 4, 4, 1, file);
-            if (!bytes_read) return;
+            auto four_bytes_read = fread_s(&dib_size, 4, 4, 1, file);
+            if (!is_equal(four_bytes_read, 1)) return;
 
+            // BMP dib type is distiguished by its size
             switch (dib_size)
             {
             case BITMAPCOREHEADER | OS21XBITMAPHEADER:
-                load_as<BITMAPCOREHEADER>(file, image, pao);
+                load_as<BITMAPCOREHEADER | OS21XBITMAPHEADER>(file, image, pao);
                 break;
             case BITMAPINFOHEADER:
                 load_as<BITMAPINFOHEADER>(file, image, pao);
@@ -194,7 +200,7 @@ private:
         static void load_as(FILE* file, XImage& image, uint32_t pao) {}
 
         template<>
-        static void load_as<BITMAPCOREHEADER>(FILE* file, XImage& image, uint32_t pao)
+        static void load_as<BITMAPCOREHEADER | OS21XBITMAPHEADER>(FILE* file, XImage& image, uint32_t pao)
         {
 
         }
@@ -206,7 +212,7 @@ private:
 
             uint8_t dib[36];
             auto bytes_read = fread_s(dib, 36, 1, 36, file);
-            if (!bytes_read) return;
+            if (!is_equal(bytes_read, 36)) return;
 
             // width/height
             itempo.m_Width = *reinterpret_cast<int32_t*>(&dib[0]);
@@ -215,10 +221,9 @@ private:
             // number of color planes
             if (*reinterpret_cast<uint16_t*>(&dib[8]) != 1) return;
 
-            // bytes per pixel
+            // bits per pixel
             uint16_t bpp = *reinterpret_cast<uint16_t*>(&dib[10]);
-            // only 24bpp bmps for now
-            if (bpp != 24) return;
+
             itempo.m_Format = XImage::RGB;
 
             uint32_t compression_method = *reinterpret_cast<uint32_t*>(&dib[12]);
@@ -229,23 +234,32 @@ private:
             auto pixel_array_gap = pao - 54;
             if (pixel_array_gap) fseek(file, pixel_array_gap, SEEK_CUR);
 
-            bool success = false;
-            switch (bpp)
-            {
-            case 24:
-                success = load_pixel_array<24>(file, itempo);
-            }
-
-            if (success)
+            if (load_pixel_array(file, itempo, bpp))
                 image = std::move(itempo);
         }
 
+        static bool load_pixel_array(FILE* file, XImage& image, uint16_t bpp) 
+        {
+            switch (bpp)
+            {
+            case 24:
+                return load_pixel_array_as<24>(file, image);
+            default:
+                return false;
+            }
+        }
+
         template<uint16_t bpp>
-        static bool load_pixel_array(FILE* file, XImage& image) {}
+        static bool load_pixel_array_as(FILE* file, XImage& image)
+        {
+            return false;
+        }
 
         template<>
-        static bool load_pixel_array<24>(FILE* file, XImage& image) 
+        static bool load_pixel_array_as<24>(FILE* file, XImage& image) 
         {
+            bool result = true;
+
             int32_t row_padded = (image.m_Width * 3 + 3) & (~3);
             image.m_Data.resize(3ull * image.m_Width * image.m_Height);
 
@@ -254,10 +268,18 @@ private:
 
             for (size_t i = 0; i < image.m_Height; i++)
             {
-                fread(row_buffer, sizeof(uint8_t), row_padded, file);
+                auto bytes_read = fread_s(row_buffer, row_padded, sizeof(uint8_t), row_padded, file);
+                if (!is_equal(bytes_read, row_padded))
+                {
+                    result = false;
+                    break;
+                }
+
                 for (int j = 0; j < image.m_Width * 3; j += 3)
                 {
+                    // assert here to get rid of the warning
                     assert(j + 2 < row_padded);
+
                     tmp = row_buffer[j];
                     row_buffer[j] = row_buffer[j + 2];
                     row_buffer[j + 2] = tmp;
@@ -275,7 +297,7 @@ private:
 
             delete[] row_buffer;
 
-            return true;
+            return result;
         }
     };
 
