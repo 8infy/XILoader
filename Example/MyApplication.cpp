@@ -11,6 +11,9 @@ int main()
     // Get the pixel at 0, 0.
     auto pixel = image[0][0];
 
+    // Same as above.
+    auto pixel1 = image.at_x(0).at_y(0);
+
     // Set the 'G' component of the pixel to 25.
     pixel[1] = 25;
 

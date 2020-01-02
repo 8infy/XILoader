@@ -8,41 +8,52 @@
     #define XIL_READ_EXACTLY(bytes, dest, dest_size, file) (bytes == fread(dest, sizeof(uint8_t), bytes, file))
 #endif
 
-struct XImageViewer
+template<typename ConT>
+struct basic_XImageData
 {
-public:
-    friend class XImage;
 private:
-    std::vector<uint8_t>& m_Data;
-    uint16_t m_RequestedX;
-    uint16_t m_Width;
-    uint8_t m_Components;
+    friend class XILoader;
+    friend class XImage;
+    friend class XImageViewer;
+private:
+    basic_XImageData()
+        : width(0),
+        height(0),
+        components(0)
+    {
+    }
 
-    XImageViewer(
-        std::vector<uint8_t>& data,
-        uint16_t width,
-        uint8_t component_count,
-        uint16_t xcoord
-    )
-        : m_Data(data),
-        m_RequestedX(xcoord),
-        m_Width(width),
-        m_Components(component_count)
+    ConT     data;
+    uint16_t width;
+    uint16_t height;
+    uint8_t  components;
+};
+using XImageData = basic_XImageData<std::vector<uint8_t>>;
+
+class XImageViewer
+{
+friend class XImage;
+private:
+    XImageData& m_Image;
+    uint16_t m_AtX;
+
+    XImageViewer(XImageData& image, uint16_t x)
+        : m_Image(image), m_AtX(x)
     {
     }
 public:
     uint8_t* at_y(uint16_t y)
     {
-        auto pixel_loc = m_Width * y;
-        pixel_loc += m_RequestedX;
-        pixel_loc *= m_Components;
+        auto pixel_loc = m_Image.width * y;
+        pixel_loc += m_AtX;
+        pixel_loc *= m_Image.components;
 
-        return &m_Data[pixel_loc];
+        return &m_Image.data[pixel_loc];
     }
 
     uint8_t* operator[](uint16_t ycoord)
     {
-        return at_y(ycoord);
+        return m_Image.components ? at_y(ycoord) : nullptr;
     }
 };
 
@@ -63,26 +74,18 @@ public:
     XImage(const XImage& other)            = delete;
     XImage& operator=(const XImage& other) = delete;
 private:
-    XImage() 
-        : m_Width(0),
-        m_Height(0),
-        m_Format(UNKNOWN)
-    {
-    }
+    XImage() = default;
 private:
-    std::vector<uint8_t> m_Data;
-    uint16_t m_Width;
-    uint16_t m_Height;
-    Format   m_Format;
+    XImageData m_Image;
 public:
     uint8_t* data()
     {
-        return ok() ? m_Data.data() : nullptr;
+        return ok() ? m_Image.data.data() : nullptr;
     }
 
     Format format() const
     {
-        return m_Format;
+        return static_cast<Format>(m_Image.components);
     }
 
     bool ok() const
@@ -97,17 +100,17 @@ public:
 
     uint16_t width() const
     {
-        return m_Width;
+        return m_Image.width;
     }
 
     uint16_t height() const
     {
-        return m_Height;
+        return m_Image.height;
     }
 
     XImageViewer at_x(uint16_t x)
     {
-        return XImageViewer(m_Data, m_Width, m_Format, x);
+        return XImageViewer(m_Image, x);
     }
 
     XImageViewer operator[](uint16_t xcoord)
@@ -134,7 +137,6 @@ public:
         fopen_s(&file, path.c_str(), "rb");
 
         if (!file)
-            // TODO: A way to tell what error has occured?
             return image;
 
         switch (deduce_file_format(file))
@@ -207,14 +209,14 @@ private:
         template<>
         static void load_as<BITMAPINFOHEADER>(FILE* file, XImage& image, uint32_t pao)
         {
-            XImage itempo;
+            XImageData imdata;
 
             uint8_t dib[36];
             if (!XIL_READ_EXACTLY(36, dib, 36, file)) return;
 
             // width/height
-            itempo.m_Width = *reinterpret_cast<int32_t*>(&dib[0]);
-            itempo.m_Height = abs(*reinterpret_cast<int32_t*>(&dib[4]));
+            imdata.width = *reinterpret_cast<int32_t*>(&dib[0]);
+            imdata.height  = abs(*reinterpret_cast<int32_t*>(&dib[4]));
 
             // number of color planes
             if (*reinterpret_cast<uint16_t*>(&dib[8]) != 1) return;
@@ -222,7 +224,7 @@ private:
             // bits per pixel
             uint16_t bpp = *reinterpret_cast<uint16_t*>(&dib[10]);
 
-            itempo.m_Format = XImage::RGB;
+            imdata.components = XImage::RGB;
 
             uint32_t compression_method = *reinterpret_cast<uint32_t*>(&dib[12]);
             // no compressed bmp support for now
@@ -232,39 +234,39 @@ private:
             auto pixel_array_gap = pao - 54;
             if (pixel_array_gap) fseek(file, pixel_array_gap, SEEK_CUR);
 
-            if (load_pixel_array(file, itempo, bpp))
-                image = std::move(itempo);
+            if (load_pixel_array(file, imdata, bpp))
+                image.m_Image = std::move(imdata);
         }
 
-        static bool load_pixel_array(FILE* file, XImage& image, uint16_t bpp) 
+        static bool load_pixel_array(FILE* file, XImageData& idata, uint16_t bpp) 
         {
             switch (bpp)
             {
             case 24:
-                return load_pixel_array_as<24>(file, image);
+                return load_pixel_array_as<24>(file, idata);
             default:
                 return false;
             }
         }
 
         template<uint16_t bpp>
-        static bool load_pixel_array_as(FILE* file, XImage& image)
+        static bool load_pixel_array_as(FILE* file, XImageData& idata)
         {
             return false;
         }
 
         template<>
-        static bool load_pixel_array_as<24>(FILE* file, XImage& image) 
+        static bool load_pixel_array_as<24>(FILE* file, XImageData& idata) 
         {
             bool result = true;
 
-            int32_t row_padded = (image.m_Width * 3 + 3) & (~3);
-            image.m_Data.resize(3ull * image.m_Width * image.m_Height);
+            int32_t row_padded = (idata.width * 3 + 3) & (~3);
+            idata.data.resize(3ull * idata.width * idata.height);
 
             uint8_t tmp;
             uint8_t* row_buffer = new uint8_t[row_padded];
 
-            for (size_t i = 0; i < image.m_Height; i++)
+            for (size_t i = 0; i < idata.height; i++)
             {
                 if (!XIL_READ_EXACTLY(row_padded, row_buffer, row_padded, file))
                 {
@@ -272,7 +274,7 @@ private:
                     break;
                 }
 
-                for (int j = 0; j < image.m_Width * 3; j += 3)
+                for (int j = 0; j < idata.width * 3; j += 3)
                 {
                     // assert here to get rid of the warning
                     assert(j + 2 < row_padded);
@@ -281,12 +283,12 @@ private:
                     row_buffer[j] = row_buffer[j + 2];
                     row_buffer[j + 2] = tmp;
 
-                    auto row_offset = image.m_Data.size() - image.m_Height * (i + 1) * 3;
+                    auto row_offset = idata.data.size() - idata.width * (i + 1) * 3;
                     auto total_offset = row_offset + j;
 
                     memcpy_s(
-                        image.m_Data.data() + total_offset,
-                        image.m_Data.size() - total_offset,
+                        idata.data.data() + total_offset,
+                        idata.data.size() - total_offset,
                         row_buffer + j, 3
                     );
                 }
