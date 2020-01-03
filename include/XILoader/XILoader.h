@@ -35,9 +35,9 @@ class XImageViewer
 friend class XImage;
 private:
     XImageData& m_Image;
-    uint16_t m_AtX;
+    size_t m_AtX;
 
-    XImageViewer(XImageData& image, uint16_t x)
+    XImageViewer(XImageData& image, size_t x)
         : m_Image(image), m_AtX(x)
     {
     }
@@ -51,9 +51,14 @@ public:
         return &m_Image.data[pixel_loc];
     }
 
-    uint8_t* operator[](uint16_t ycoord)
+    uint8_t* operator[](uint16_t y)
     {
-        return m_Image.components ? at_y(ycoord) : nullptr;
+        return m_Image.components ? at_y(y) : nullptr;
+    }
+
+    operator uint8_t&()
+    {
+        return m_Image.data[m_AtX];
     }
 };
 
@@ -108,14 +113,14 @@ public:
         return m_Image.height;
     }
 
-    XImageViewer at_x(uint16_t x)
+    XImageViewer at_x(size_t x)
     {
         return XImageViewer(m_Image, x);
     }
 
-    XImageViewer operator[](uint16_t xcoord)
+    XImageViewer operator[](size_t x)
     {
-        return at_x(xcoord);
+        return at_x(x);
     }
 };
 
@@ -166,14 +171,6 @@ private:
 
     class BMP
     {
-    private:
-        enum dib_type
-        {
-            UNKNOWN           = 0,
-            BITMAPCOREHEADER  = 12,
-            OS21XBITMAPHEADER = 12,
-            BITMAPINFOHEADER  = 40
-        };
     public:
         static void load(FILE* file, XImage& image)
         {
@@ -186,37 +183,19 @@ private:
             uint32_t dib_size;
             if (!XIL_READ_EXACTLY(4, &dib_size, 4, file)) return;
 
-            // BMP dib type is distiguished by its size
-            switch (dib_size)
-            {
-            case BITMAPCOREHEADER | OS21XBITMAPHEADER:
-                load_as<BITMAPCOREHEADER | OS21XBITMAPHEADER>(file, image, pao);
-                break;
-            case BITMAPINFOHEADER:
-                load_as<BITMAPINFOHEADER>(file, image, pao);
-            }
-        }
-    private:
-        template<size_t>
-        static void load_as(FILE* file, XImage& image, uint32_t pao) {}
+            XImageData idata;
 
-        template<>
-        static void load_as<BITMAPCOREHEADER | OS21XBITMAPHEADER>(FILE* file, XImage& image, uint32_t pao)
-        {
+            if (dib_size < 12 || dib_size > 124)
+                // invalid dib
+                return;
 
-        }
-
-        template<>
-        static void load_as<BITMAPINFOHEADER>(FILE* file, XImage& image, uint32_t pao)
-        {
-            XImageData imdata;
-
-            uint8_t dib[36];
-            if (!XIL_READ_EXACTLY(36, dib, 36, file)) return;
+            // biggest possible dib
+            uint8_t dib[124];
+            if (!XIL_READ_EXACTLY(dib_size - 4, dib, 124, file)) return;
 
             // width/height
-            imdata.width = *reinterpret_cast<int32_t*>(&dib[0]);
-            imdata.height  = abs(*reinterpret_cast<int32_t*>(&dib[4]));
+            idata.width = *reinterpret_cast<int32_t*>(&dib[0]);
+            idata.height = abs(*reinterpret_cast<int32_t*>(&dib[4]));
 
             // number of color planes
             if (*reinterpret_cast<uint16_t*>(&dib[8]) != 1) return;
@@ -224,39 +203,124 @@ private:
             // bits per pixel
             uint16_t bpp = *reinterpret_cast<uint16_t*>(&dib[10]);
 
-            imdata.components = XImage::RGB;
+            if (bpp < 32)
+                idata.components = XImage::RGB;
+            else if (bpp == 32)
+                idata.components = XImage::RGBA;
+            else
+                // incorrect bpp
+                return;
+
 
             uint32_t compression_method = *reinterpret_cast<uint32_t*>(&dib[12]);
             // no compressed bmp support for now
             if (compression_method) return;
 
-            // skip N bytes to get to the pixel array
-            auto pixel_array_gap = pao - 54;
-            if (pixel_array_gap) fseek(file, pixel_array_gap, SEEK_CUR);
+            uint32_t* palette = nullptr;
+            uint32_t colors = 0;
 
-            if (load_pixel_array(file, imdata, bpp))
-                image.m_Image = std::move(imdata);
+            if (dib_size >= 40)
+            {
+                colors = *reinterpret_cast<uint32_t*>(&dib[28]);
+                if (!colors && bpp <= 8)
+                    colors = static_cast<uint32_t>(pow(2, bpp));
+                if (colors)
+                    palette = new uint32_t[colors];
+            }
+
+            if (!palette)
+            {
+                // skip N bytes to get to the pixel array
+                auto pixel_array_gap = pao - dib_size - 14;
+                if (pixel_array_gap) fseek(file, pixel_array_gap, SEEK_CUR);
+            }
+            else
+            {
+                if (!XIL_READ_EXACTLY(colors * sizeof(uint32_t), palette, colors * sizeof(uint32_t), file))
+                    return;
+            }
+
+            if (load_pixel_array(file, idata, bpp, palette))
+                image.m_Image = std::move(idata);
+
+            delete[] palette;
         }
-
-        static bool load_pixel_array(FILE* file, XImageData& idata, uint16_t bpp) 
+    private:
+        static bool load_pixel_array(FILE* file, XImageData& idata, uint16_t bpp, uint32_t* palette) 
         {
             switch (bpp)
             {
+            case 1:
+                return load_1bpp(file, idata, palette);
             case 24:
-                return load_pixel_array_as<24>(file, idata);
+                return load_24bpp(file, idata);
             default:
                 return false;
             }
         }
 
-        template<uint16_t bpp>
-        static bool load_pixel_array_as(FILE* file, XImageData& idata)
+        static bool load_1bpp(FILE* file, XImageData& idata, uint32_t* palette)
         {
-            return false;
+            bool result = true;
+
+            int32_t row_padded = (int)(ceil(idata.width / 8.0) + 3) & (~3);
+            idata.data.resize(3ull * idata.width * idata.height);
+
+            uint8_t* row_buffer = new uint8_t[row_padded];
+
+            // current Y of the image
+            for (size_t i = 0; i < idata.height; i++)
+            {
+                if (!XIL_READ_EXACTLY(row_padded, row_buffer, row_padded, file))
+                {
+                    result = false;
+                    break;
+                }
+
+                size_t pixel_count = 0;
+                // Perhaps theres a prettier way to do this:
+                // e.g get rid of the 2 loops and calculate
+                // the pixel using the % operator and pixel_count.
+
+                // current byte
+                for (size_t j = 0;; j++)
+                {
+                    // current bit of the byte
+                    for (int8_t pixel = 7; pixel >= 0; pixel--)
+                    {
+                        pixel_count++;
+
+                        uint8_t RGB[3];
+                        uint8_t palette_index = (row_buffer[j] >> pixel) & 1;
+
+                        RGB[0] = palette[palette_index];
+                        RGB[1] = palette[palette_index];
+                        RGB[2] = palette[palette_index];
+
+                        // this is super ugly - to be somehow refactored
+                        auto row_offset = idata.data.size() - idata.width * (i + 1) * 3;
+                        auto total_offset = row_offset + ((pixel_count - 1) * 3);
+
+                        memcpy_s(
+                            idata.data.data() + total_offset,
+                            idata.data.size() - total_offset,
+                            RGB, 3
+                        );
+
+                        if (pixel_count == idata.width)
+                            break;
+                    }
+                    if (pixel_count == idata.width)
+                        break;
+                }
+            }
+
+            delete[] row_buffer;
+
+            return result;
         }
 
-        template<>
-        static bool load_pixel_array_as<24>(FILE* file, XImageData& idata) 
+        static bool load_24bpp(FILE* file, XImageData& idata)
         {
             bool result = true;
 
