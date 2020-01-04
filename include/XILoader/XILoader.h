@@ -44,7 +44,7 @@ private:
 public:
     uint8_t* at_y(uint16_t y)
     {
-        auto pixel_loc = m_Image.width * y;
+        size_t pixel_loc = static_cast<size_t>(m_Image.width) * y;
         pixel_loc += m_AtX;
         pixel_loc *= m_Image.components;
 
@@ -216,7 +216,7 @@ private:
             // no compressed bmp support for now
             if (compression_method) return;
 
-            uint32_t* palette = nullptr;
+            uint8_t* palette = nullptr;
             uint32_t colors = 0;
 
             if (dib_size >= 40)
@@ -225,7 +225,7 @@ private:
                 if (!colors && bpp <= 8)
                     colors = static_cast<uint32_t>(pow(2, bpp));
                 if (colors)
-                    palette = new uint32_t[colors];
+                    palette = new uint8_t[colors * sizeof(uint32_t)];
             }
 
             if (!palette)
@@ -246,12 +246,14 @@ private:
             delete[] palette;
         }
     private:
-        static bool load_pixel_array(FILE* file, XImageData& idata, uint16_t bpp, uint32_t* palette) 
+        static bool load_pixel_array(FILE* file, XImageData& idata, uint16_t bpp, uint8_t* palette) 
         {
             switch (bpp)
             {
             case 1:
                 return load_1bpp(file, idata, palette);
+            case 2:
+                return load_2bpp(file, idata, palette);
             case 24:
                 return load_24bpp(file, idata);
             default:
@@ -259,7 +261,7 @@ private:
             }
         }
 
-        static bool load_1bpp(FILE* file, XImageData& idata, uint32_t* palette)
+        static bool load_1bpp(FILE* file, XImageData& idata, uint8_t* palette)
         {
             bool result = true;
 
@@ -293,9 +295,71 @@ private:
                         uint8_t RGB[3];
                         uint8_t palette_index = (row_buffer[j] >> pixel) & 1;
 
-                        RGB[0] = palette[palette_index];
-                        RGB[1] = palette[palette_index];
-                        RGB[2] = palette[palette_index];
+                        RGB[0] = palette[palette_index * 4 + 0];
+                        RGB[1] = palette[palette_index * 4 + 1];
+                        RGB[2] = palette[palette_index * 4 + 2];
+
+                        // this is super ugly - to be somehow refactored
+                        auto row_offset = idata.data.size() - idata.width * (i + 1) * 3;
+                        auto total_offset = row_offset + ((pixel_count - 1) * 3);
+
+                        memcpy_s(
+                            idata.data.data() + total_offset,
+                            idata.data.size() - total_offset,
+                            RGB, 3
+                        );
+
+                        if (pixel_count == idata.width)
+                            break;
+                    }
+                    if (pixel_count == idata.width)
+                        break;
+                }
+            }
+
+            delete[] row_buffer;
+
+            return result;
+        }
+
+        // havent tested this because there isnt a single 2-bpp bmp on the internet
+        static bool load_2bpp(FILE* file, XImageData& idata, uint8_t* palette)
+        {
+            bool result = true;
+
+            int32_t row_padded = (int)(ceil(idata.width / 4.0) + 3) & (~3);
+            idata.data.resize(3ull * idata.width * idata.height);
+
+            uint8_t* row_buffer = new uint8_t[row_padded];
+
+            // current Y of the image
+            for (size_t i = 0; i < idata.height; i++)
+            {
+                if (!XIL_READ_EXACTLY(row_padded, row_buffer, row_padded, file))
+                {
+                    result = false;
+                    break;
+                }
+
+                size_t pixel_count = 0;
+                // Perhaps theres a prettier way to do this:
+                // e.g get rid of the 2 loops and calculate
+                // the pixel using the % operator and pixel_count.
+
+                // current byte
+                for (size_t j = 0;; j++)
+                {
+                    // current bit of the byte
+                    for (int8_t pixel = 6; pixel >= 0; pixel-=2)
+                    {
+                        pixel_count++;
+
+                        uint8_t RGB[3];
+                        uint8_t palette_index = (row_buffer[j] >> pixel) & 3;
+
+                        RGB[0] = palette[palette_index * 4 + 0];
+                        RGB[1] = palette[palette_index * 4 + 1];
+                        RGB[2] = palette[palette_index * 4 + 2];
 
                         // this is super ugly - to be somehow refactored
                         auto row_offset = idata.data.size() - idata.width * (i + 1) * 3;
