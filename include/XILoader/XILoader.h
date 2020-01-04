@@ -250,10 +250,20 @@ private:
         {
             switch (bpp)
             {
+            // this can and should be replaced with
+            // case 1:
+            // case 2:
+            // case 4:
+            // case 8:
+            // load_indexed(filed, idata, palette, bpp);
             case 1:
                 return load_1bpp(file, idata, palette);
             case 2:
                 return load_2bpp(file, idata, palette);
+            case 4:
+                return load_4bpp(file, idata, palette);
+            case 8:
+                return load_8bpp(file, idata, palette);
             case 24:
                 return load_24bpp(file, idata);
             default:
@@ -295,9 +305,9 @@ private:
                         uint8_t RGB[3];
                         uint8_t palette_index = (row_buffer[j] >> pixel) & 1;
 
-                        RGB[0] = palette[palette_index * 4 + 0];
+                        RGB[0] = palette[palette_index * 4 + 2];
                         RGB[1] = palette[palette_index * 4 + 1];
-                        RGB[2] = palette[palette_index * 4 + 2];
+                        RGB[2] = palette[palette_index * 4 + 0];
 
                         // this is super ugly - to be somehow refactored
                         auto row_offset = idata.data.size() - idata.width * (i + 1) * 3;
@@ -357,9 +367,9 @@ private:
                         uint8_t RGB[3];
                         uint8_t palette_index = (row_buffer[j] >> pixel) & 3;
 
-                        RGB[0] = palette[palette_index * 4 + 0];
+                        RGB[0] = palette[palette_index * 4 + 2];
                         RGB[1] = palette[palette_index * 4 + 1];
-                        RGB[2] = palette[palette_index * 4 + 2];
+                        RGB[2] = palette[palette_index * 4 + 0];
 
                         // this is super ugly - to be somehow refactored
                         auto row_offset = idata.data.size() - idata.width * (i + 1) * 3;
@@ -374,6 +384,124 @@ private:
                         if (pixel_count == idata.width)
                             break;
                     }
+                    if (pixel_count == idata.width)
+                        break;
+                }
+            }
+
+            delete[] row_buffer;
+
+            return result;
+        }
+
+        static bool load_4bpp(FILE* file, XImageData& idata, uint8_t* palette)
+        {
+            bool result = true;
+
+            int32_t row_padded = (int)(ceil(idata.width / 2.0) + 3) & (~3);
+            idata.data.resize(3ull * idata.width * idata.height);
+
+            uint8_t* row_buffer = new uint8_t[row_padded];
+
+            // current Y of the image
+            for (size_t i = 0; i < idata.height; i++)
+            {
+                if (!XIL_READ_EXACTLY(row_padded, row_buffer, row_padded, file))
+                {
+                    result = false;
+                    break;
+                }
+
+                size_t pixel_count = 0;
+                // Perhaps theres a prettier way to do this:
+                // e.g get rid of the 2 loops and calculate
+                // the pixel using the % operator and pixel_count.
+
+                // current byte
+                for (size_t j = 0;; j++)
+                {
+                    // current bit of the byte
+                    for (int8_t pixel = 4; pixel >= 0; pixel -= 4)
+                    {
+                        pixel_count++;
+
+                        uint8_t RGB[3];
+                        uint8_t palette_index = (row_buffer[j] >> pixel) & 15;
+
+                        RGB[0] = palette[palette_index * 4 + 2];
+                        RGB[1] = palette[palette_index * 4 + 1];
+                        RGB[2] = palette[palette_index * 4 + 0];
+
+                        // this is super ugly - to be somehow refactored
+                        auto row_offset = idata.data.size() - idata.width * (i + 1) * 3;
+                        auto total_offset = row_offset + ((pixel_count - 1) * 3);
+
+                        memcpy_s(
+                            idata.data.data() + total_offset,
+                            idata.data.size() - total_offset,
+                            RGB, 3
+                        );
+
+                        if (pixel_count == idata.width)
+                            break;
+                    }
+                    if (pixel_count == idata.width)
+                        break;
+                }
+            }
+
+            delete[] row_buffer;
+
+            return result;
+        }
+
+        static bool load_8bpp(FILE* file, XImageData& idata, uint8_t* palette)
+        {
+            bool result = true;
+
+            int32_t row_padded = (idata.width + 3) & (~3);
+            idata.data.resize(3ull * idata.width * idata.height);
+
+            uint8_t* row_buffer = new uint8_t[row_padded];
+
+            // current Y of the image
+            for (size_t i = 0; i < idata.height; i++)
+            {
+                if (!XIL_READ_EXACTLY(row_padded, row_buffer, row_padded, file))
+                {
+                    result = false;
+                    break;
+                }
+
+                size_t pixel_count = 0;
+                // Perhaps theres a prettier way to do this:
+                // e.g get rid of the 2 loops and calculate
+                // the pixel using the % operator and pixel_count.
+
+                // current byte
+                for (size_t j = 0;; j++)
+                {
+                    pixel_count++;
+
+                    uint8_t RGB[3];
+
+                    assert(j < row_padded);
+                    uint8_t palette_index = row_buffer[j];
+
+                    RGB[0] = palette[palette_index * 4 + 2];
+                    RGB[1] = palette[palette_index * 4 + 1];
+                    RGB[2] = palette[palette_index * 4 + 0];
+
+                    // this is super ugly - to be somehow refactored
+                    auto row_offset = idata.data.size() - idata.width * (i + 1) * 3;
+                    auto total_offset = row_offset + ((pixel_count - 1) * 3);
+
+                    memcpy_s(
+                        idata.data.data() + total_offset,
+                        idata.data.size() - total_offset,
+                        RGB, 3
+                    );
+
                     if (pixel_count == idata.width)
                         break;
                 }
