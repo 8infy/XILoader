@@ -3,7 +3,7 @@
 
 int main()
 {
-    auto image = XILoader::load("C:\\test.bmp");
+    auto image = XILoader::load("C:\\MARBLES.bmp");
 
     if (!image)
         throw std::runtime_error("Failed to load the image!");
@@ -20,7 +20,7 @@ int main()
     // Returns the number of 8-bit channels.
     // 3 for RGB, 4 for RGBA, etc
     // Can be compared with XImage::RGB/XImage::RGBA.
-    auto format = image.format();
+    auto format = image.channels();
 
     // Retrieve image size.
     auto width = image.width();
