@@ -322,7 +322,7 @@ private:
             // can be 3 or 4 (99% of the time its 4)
             uint16_t bpc;
             uint16_t bpp;
-            uint16_t channels;
+            uint8_t channels;
             uint16_t width;
             uint16_t height;
             RGBA_MASK masks;
