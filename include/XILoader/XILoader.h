@@ -266,7 +266,7 @@ private:
         BMP = 1
     };
 public:
-    static XImage load(const std::string& path)
+    static XImage load(const std::string& path, bool flip = false)
     {
         XImage image;
 
@@ -278,7 +278,7 @@ public:
         switch (deduce_file_format(file))
         {
         case FileFormat::BMP:
-            BMP::load(file, image);
+            BMP::load(file, image, flip);
             break;
         }
 
@@ -333,7 +333,7 @@ private:
             ~BMP_DATA() { delete[] palette; }
         };
     public:
-        static void load(FileController& file, XImage& image)
+        static void load(FileController& file, XImage& image, bool force_flip)
         {
             BMP_DATA idata{};
 
@@ -509,6 +509,8 @@ private:
                 auto pixel_array_gap = idata.pao - file.bytes_read();
                 if (pixel_array_gap) file.skip_n(pixel_array_gap);
 
+                idata.flipped = idata.flipped != force_flip;
+
                 if (load_pixel_array(file, idata, image.m_Image.data))
                 {
                     image.m_Image.channels = idata.channels;
@@ -573,7 +575,18 @@ private:
                             RGB[1] = idata.palette[palette_index * idata.bpc + 1];
                             RGB[2] = idata.palette[palette_index * idata.bpc + 0];
 
-                            auto row_offset = to.size() - idata.width * i * 3;
+
+                            size_t row_offset;
+
+                            // flipped meaning stored top to bottom
+                            if (idata.flipped)
+                                row_offset = idata.width * (i - 1) * idata.channels;
+                            else
+                            {
+                                row_offset = idata.width * i * idata.channels;
+                                row_offset = to.size() - row_offset;
+                            }
+
                             auto total_offset = row_offset + ((pixel_count - 1) * 3);
 
                             memcpy_s(
@@ -640,7 +653,17 @@ private:
                         // we have to account for that
                         auto pixel_offset = idata.channels * (j / bytes_per_pixel);
 
-                        auto row_offset = to.size() - idata.width * i * idata.channels;
+                        size_t row_offset;
+
+                        // flipped meaning stored top to bottom
+                        if (idata.flipped)
+                            row_offset = idata.width * (i - 1) * idata.channels;
+                        else
+                        {
+                            row_offset = idata.width * i * idata.channels;
+                            row_offset = to.size() - row_offset;
+                        }
+
                         auto total_offset = row_offset + pixel_offset;
 
                         memcpy_s(
