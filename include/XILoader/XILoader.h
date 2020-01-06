@@ -1,5 +1,6 @@
 #include <string>
 #include <vector>
+#include <bitset>
 #include <assert.h>
 
 #ifdef _WIN32
@@ -296,14 +297,46 @@ private:
             return FileFormat::UNKNOWN;
     }
 
+    static uint8_t highest_set_bit(uint32_t x)
+    {
+        uint8_t set = 0;
+
+        if (!x)
+            throw std::runtime_error("Cannot extract highest set bit for a 0");
+
+        if (x >= 0x10000) { set += 16; x >>= 16; }
+        if (x >= 0x00100) { set += 8;  x >>= 8;  }
+        if (x >= 0x00010) { set += 4;  x >>= 4;  }
+        if (x >= 0x00004) { set += 2;  x >>= 2;  }
+        if (x >= 0x00002) { set += 1;            }
+
+        return set;
+    }
+
+    static uint8_t count_bits(uint32_t x)
+    {
+        return static_cast<uint8_t>(std::bitset<32>(x).count());
+    }
+
     class BMP
     {
         struct RGBA_MASK
         {
             uint32_t r;
+            int32_t  r_shift;
+            int8_t   r_bits;
+
             uint32_t g;
+            int32_t  g_shift;
+            int8_t   g_bits;
+
             uint32_t b;
+            int32_t  b_shift;
+            int8_t   b_bits;
+
             uint32_t a;
+            int32_t  a_shift;
+            int8_t   a_bits;
 
             bool has_alpha() { return a; }
         };
@@ -437,12 +470,22 @@ private:
                 // BITMAPINFOHEADER stores this after the dib
                 if ((idata.compression_method == 3) || (idata.compression_method == 6))
                 {
-                    idata.masks.r = file.get_u32();
-                    idata.masks.g = file.get_u32();
-                    idata.masks.b = file.get_u32();
+                    idata.masks.r       = file.get_u32();
+                    idata.masks.r_bits  = count_bits(idata.masks.r);
+                    idata.masks.r_shift = highest_set_bit(idata.masks.r) - 7;
+
+                    idata.masks.g       = file.get_u32();
+                    idata.masks.g_bits  = count_bits(idata.masks.g);
+                    idata.masks.g_shift = highest_set_bit(idata.masks.g) - 7;
+
+                    idata.masks.b       = file.get_u32();
+                    idata.masks.b_bits  = count_bits(idata.masks.b);
+                    idata.masks.b_shift = highest_set_bit(idata.masks.b) - 7;
 
                     if ((idata.compression_method == 6) || (idata.dib_size >= 56))
-                        idata.masks.a = file.get_u32();
+                        idata.masks.a       = file.get_u32();
+                        idata.masks.a_bits  = count_bits(idata.masks.a);
+                        idata.masks.a_shift = highest_set_bit(idata.masks.a) - 7;
                 }
 
                 // OS22X
@@ -494,16 +537,9 @@ private:
                 // 24 bit images are always RGB (hopefully?)
                 else if (idata.bpp == 24)
                     idata.channels = 3;
+                // We assume all 32 bit images to be RGBA
                 else if (idata.bpp == 32)
-                {
-                    // if RGBA mask is specified we have 4 channels
-                    // STBI automatically assumes that all 32bpp BMPS are RGBA
-                    // so maybe do the same?
-                    if (idata.has_rgba_mask() && idata.masks.has_alpha())
-                        idata.channels = 4;
-                    else
-                        idata.channels = 3;
-                }
+                    idata.channels = 4;
 
                 // skip N bytes to get to the pixel array
                 auto pixel_array_gap = idata.pao - file.bytes_read();
@@ -618,9 +654,116 @@ private:
             return result;
         }
 
+        // Tranforms a given RGBAX fraction into a 0-255 range R/G/B/A channel
+        static uint8_t shift_signed_as_byte(uint32_t x, int32_t by, uint8_t bits)
+        {
+            static uint32_t mul_table[9] = {
+               0   /*0b00000000*/,
+               0xff/*0b11111111*/, 0x55/*0b01010101*/,
+               0x49/*0b01001001*/, 0x11/*0b00010001*/,
+               0x21/*0b00100001*/, 0x41/*0b01000001*/,
+               0x81/*0b10000001*/, 0x01/*0b00000001*/,
+            };
+
+            static uint32_t shift_table[9] = {
+               0,0,0,
+               1,0,2,
+               4,6,0,
+            };
+
+            if (by < 0)
+                x <<= -by;
+            else
+                x >>= by;
+
+            if (!((x >= 0) && (x < 256)))
+                throw std::runtime_error("Invalid conversion (x)");
+
+            x >>= (8 - bits);
+
+            if (!((bits >= 0) && (bits <= 8)))
+                throw std::runtime_error("Invalid conversion (bits)");
+
+            return ((x * mul_table[bits]) >> shift_table[bits]) & UINT8_MAX;
+        }
+
         static bool load_sampled(FileController& file, BMP_DATA& idata, XImageData::Container& to)
         {
-            return true;
+            bool result = true;
+            uint8_t* row_buffer = nullptr;
+
+            try {
+                uint8_t bytes_per_pixel = idata.bpp / 8;
+                uint32_t row_padded = (idata.width * bytes_per_pixel + 3) & (~3);
+                to.resize(static_cast<size_t>(idata.channels) * idata.width * idata.height);
+
+                row_buffer = new uint8_t[row_padded];
+
+                for (size_t i = 1; i < idata.height + 1ull; i++)
+                {
+                    file.get_n(row_padded, row_buffer);
+
+                    for (size_t j = 0; j < static_cast<size_t>(idata.width) * bytes_per_pixel; j += bytes_per_pixel)
+                    {
+                        uint32_t sample;
+
+                        if (bytes_per_pixel == 2)
+                            sample = *reinterpret_cast<uint16_t*>(&row_buffer[j]);
+                        else if (bytes_per_pixel == 4)
+                            sample = *reinterpret_cast<uint32_t*>(&row_buffer[j]);
+                        else
+                            throw std::runtime_error("This image shouldn't be sampled (not 16/32 bpp)");
+
+                        uint8_t RGBA[4];
+                        RGBA[0] = shift_signed_as_byte(sample & idata.masks.r, idata.masks.r_shift, idata.masks.r_bits);
+                        RGBA[1] = shift_signed_as_byte(sample & idata.masks.g, idata.masks.g_shift, idata.masks.g_bits);
+                        RGBA[2] = shift_signed_as_byte(sample & idata.masks.b, idata.masks.b_shift, idata.masks.b_bits);
+
+                        if (idata.channels == 4)
+                        {
+                            if (idata.masks.has_alpha())
+                                RGBA[3] = shift_signed_as_byte(sample & idata.masks.a, idata.masks.a_shift, idata.masks.a_bits);
+                            else
+                                RGBA[3] = 255;
+                        }
+
+                        // since we could be forcing a different number of channels 
+                        // we have to account for that
+                        auto pixel_offset = idata.channels * (j / bytes_per_pixel);
+
+                        size_t row_offset;
+
+                        // flipped meaning stored top to bottom
+                        if (idata.flipped)
+                            row_offset = idata.width * (i - 1) * idata.channels;
+                        else
+                        {
+                            row_offset = idata.width * i * idata.channels;
+                            row_offset = to.size() - row_offset;
+                        }
+
+                        auto total_offset = row_offset + pixel_offset;
+
+                        memcpy_s(
+                            to.data() + total_offset,
+                            to.size() - total_offset,
+                            RGBA, idata.channels
+                        );
+                    }
+                }
+
+                delete[] row_buffer;
+            }
+            catch (const std::exception& ex)
+            {
+                XIL_UNUSED(ex);
+                result = false;
+            }
+
+            if (!result)
+                to.clear();
+
+            return result;
         }
 
         static bool load_raw(FileController& file, BMP_DATA& idata, XImageData::Container& to)
