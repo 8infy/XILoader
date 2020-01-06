@@ -483,9 +483,11 @@ private:
                     idata.masks.b_shift = highest_set_bit(idata.masks.b) - 7;
 
                     if ((idata.compression_method == 6) || (idata.dib_size >= 56))
+                    {
                         idata.masks.a       = file.get_u32();
                         idata.masks.a_bits  = count_bits(idata.masks.a);
                         idata.masks.a_shift = highest_set_bit(idata.masks.a) - 7;
+                    }
                 }
 
                 // OS22X
