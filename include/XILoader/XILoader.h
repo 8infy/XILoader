@@ -264,7 +264,9 @@ private:
     enum class FileFormat
     {
         UNKNOWN = 0,
-        BMP = 1
+        BMP     = 1,
+        PNG     = 2,
+        JPEG    = 3
     };
 public:
     static XImage load(const std::string& path, bool flip = false)
@@ -281,6 +283,9 @@ public:
         case FileFormat::BMP:
             BMP::load(file, image, flip);
             break;
+        case FileFormat::JPEG:
+        case FileFormat::PNG:
+            throw std::runtime_error("Unsupported image format");
         }
 
         return image;
@@ -288,11 +293,23 @@ public:
 private:
     static FileFormat deduce_file_format(FileController& file)
     {
-        uint8_t magic[2];
-        file.peek_n(2, magic);
+        uint8_t magic[4];
+        file.peek_n(4, magic);
 
-        if (magic[0] == 'B' && magic[1] == 'M')
+        if ((magic[0] == 'B') &&
+            (magic[1] == 'M'))
             return FileFormat::BMP;
+
+        else if ((magic[0] == 0x89) &&
+                 (magic[1] == 'P')  &&
+                 (magic[2] == 'N')  &&
+                 (magic[3] == 'G'))
+            return FileFormat::PNG;
+
+        else if ((magic[0] == 0xff) &&
+                 (magic[1] == 0xd8))
+            return FileFormat::JPEG;
+
         else
             return FileFormat::UNKNOWN;
     }
