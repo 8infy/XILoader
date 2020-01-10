@@ -11,8 +11,40 @@
     (bytes == fread(dest, sizeof(uint8_t), bytes, file))
 #endif
 
-#define BIT(x) (1 << (x))
+// 2 to the power of x
+#define XIL_BIT(x) (1 << (x))
+
+// set first x bits to 1
+#define XIL_BITS(x) (XIL_BIT(x) - 1)
+
 #define XIL_UNUSED(var) (void)var
+
+#define XIL_U16_SWAP(x) ((x >> 8) | (x << 8))
+
+#define XIL_U32_SWAP(x) (((x >> 24)  & 0x000000ff) | \
+                         ((x >> 8)   & 0x0000ff00) | \
+                         ((x << 8)   & 0x00ff0000) | \
+                         ((x << 24)  & 0xff000000))
+
+enum class xil_byte_order
+{
+    UNDEFINED = 0,
+    LITTLE    = 1,
+    BIG       = 2
+};
+
+// the only valid pre c++20 compile time endianness detection?
+#define XIL_IS_LITTLE_ENDIAN ('ABCD'==0x41424344UL)
+#define XIL_IS_BIG_ENDIAN    ('ABCD'==0x44434241UL)
+
+inline constexpr xil_byte_order host_endiannes()
+{
+    return XIL_IS_LITTLE_ENDIAN ? xil_byte_order::LITTLE : xil_byte_order::BIG;
+}
+
+#if !XIL_IS_LITTLE_ENDIAN && !XIL_IS_BIG_ENDIAN
+#error Either your system is middle endian or my code is broken, sorry!
+#endif
 
 template<typename ConT>
 struct basic_XImageData
@@ -181,6 +213,9 @@ public:
 
         m_BytesRead += sizeof(uint16_t);
 
+        if constexpr (host_endiannes() == xil_byte_order::BIG)
+            XIL_U16_SWAP(out);
+
         return out;
     }
 
@@ -192,18 +227,25 @@ public:
 
         m_BytesRead += sizeof(uint32_t);
 
+        if constexpr (host_endiannes() == xil_byte_order::BIG)
+            XIL_U32_SWAP(out);
+
         return out;
     }
 
     int32_t get_i32()
     {
-        int32_t out;
-        if (!ok() || !XIL_READ_EXACTLY(sizeof(int32_t), &out, sizeof(out), m_File))
+        uint32_t data;
+
+        if (!ok() || !XIL_READ_EXACTLY(sizeof(uint32_t), &data, sizeof(data), m_File))
             throw std::runtime_error("Failed to extract int32 from file");
 
-        m_BytesRead += sizeof(int32_t);
+        m_BytesRead += sizeof(uint32_t);
 
-        return out;
+        if constexpr (host_endiannes() == xil_byte_order::BIG)
+            data = XIL_U32_SWAP(data);
+
+        return static_cast<int32_t>(data);
     }
 
     void get_n(size_t bytes, uint8_t* to)
@@ -252,6 +294,33 @@ public:
         return m_BytesRead;
     }
 
+    uint8_t get_bit(uint8_t index)
+    {
+        if (index > 7)
+            throw std::runtime_error("A byte is 8 bits wide [0...7] range (got a larger value)");
+
+        uint8_t byte;
+        peek_n(sizeof(uint8_t), &byte);
+
+        return (byte >> index) & XIL_BIT(0);
+    }
+
+    uint8_t get_bits(uint8_t offset, uint8_t count)
+    {
+        if ((offset + count) > 8)
+            throw std::runtime_error("A byte is 8 bits wide [0...7] range (got a larger value)");
+
+        uint8_t byte;
+        peek_n(sizeof(uint8_t), &byte);
+
+        return (byte >> offset) & XIL_BITS(count);
+    }
+
+    void next_byte()
+    {
+        skip_n(1);
+    }
+
     ~FileController()
     {
         if (m_File) fclose(m_File);
@@ -283,9 +352,10 @@ public:
         case FileFormat::BMP:
             BMP::load(file, image, flip);
             break;
-        case FileFormat::JPEG:
         case FileFormat::PNG:
-            throw std::runtime_error("Unsupported image format");
+            break;
+        case FileFormat::JPEG:
+            break;
         }
 
         return image;
@@ -624,7 +694,7 @@ private:
 
                             uint8_t RGB[3];
 
-                            uint8_t palette_index = (row_buffer[j] >> pixel) & (BIT(idata.bpp) - 1);
+                            uint8_t palette_index = (row_buffer[j] >> pixel) & (XIL_BIT(idata.bpp) - 1);
 
                             RGB[0] = idata.palette[palette_index * idata.bpc + 2];
                             RGB[1] = idata.palette[palette_index * idata.bpc + 1];
@@ -843,7 +913,7 @@ private:
                 XIL_UNUSED(ex);
                 result = false;
             }
-
+            constexpr auto x = host_endiannes();
             if (!result)
                 to.clear();
 
