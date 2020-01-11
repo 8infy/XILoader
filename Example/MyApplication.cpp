@@ -1,4 +1,3 @@
-#include <stdexcept>
 #include <XILoader/XILoader.h>
 
 int main()
