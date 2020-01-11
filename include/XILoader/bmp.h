@@ -38,7 +38,7 @@ namespace XIL
             uint32_t pao;
             uint32_t dib_size;
             bool flipped;
-            uint8_t* palette;
+            std::vector<uint8_t> palette;
             uint32_t compression_method;
             uint32_t colors;
 
@@ -51,10 +51,8 @@ namespace XIL
             uint16_t height;
             RGBA_MASK masks;
 
-            bool has_palette() { return colors; }
+            bool has_palette()   { return colors; }
             bool has_rgba_mask() { return masks.a | masks.r | masks.g | masks.b; }
-
-            ~BMP_DATA() { delete[] palette; }
         };
     public:
         static void load(File& file, Image& image, bool force_flip)
@@ -148,12 +146,12 @@ namespace XIL
                 {
                     if (idata.dib_size > 12)
                     {
-                        idata.palette = new uint8_t[idata.colors * sizeof(uint32_t)];
+                        idata.palette.resize(idata.colors * sizeof(uint32_t));
                         idata.bpc = sizeof(uint32_t);
                     }
                     else
                     {
-                        idata.palette = new uint8_t[idata.colors * 3ull];
+                        idata.palette.resize(idata.colors * 3ull);
                         idata.bpc = 3;
                     }
                 }
@@ -216,9 +214,9 @@ namespace XIL
                 if (idata.has_palette())
                 {
                     if (idata.dib_size > 12)
-                        file.get_n(idata.colors * sizeof(uint32_t), idata.palette);
+                        file.get_n(idata.colors * sizeof(uint32_t), idata.palette.data());
                     else // OS21X stores colors as 24-bit RGB
-                        file.get_n(idata.colors * 3ull, idata.palette);
+                        file.get_n(idata.colors * 3ull, idata.palette.data());
 
                     // indexed images are always RGB (hopefully?)
                     idata.channels = 3;
@@ -298,12 +296,11 @@ namespace XIL
 
                             uint8_t RGB[3];
 
-                            uint8_t palette_index = (row_buffer[j] >> pixel) & (XIL_BIT(idata.bpp) - 1);
+                            size_t palette_index = (row_buffer[j] >> pixel) & (XIL_BIT(idata.bpp) - 1);
 
                             RGB[0] = idata.palette[palette_index * idata.bpc + 2];
                             RGB[1] = idata.palette[palette_index * idata.bpc + 1];
                             RGB[2] = idata.palette[palette_index * idata.bpc + 0];
-
 
                             size_t row_offset;
 
