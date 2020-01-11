@@ -60,7 +60,7 @@ namespace XIL {
             m_BytesRead += sizeof(uint16_t);
 
             if constexpr (host_endiannes() == byte_order::BIG)
-                XIL_U16_SWAP(out);
+                out = XIL_U16_SWAP(out);
 
             return out;
         }
@@ -74,7 +74,21 @@ namespace XIL {
             m_BytesRead += sizeof(uint32_t);
 
             if constexpr (host_endiannes() == byte_order::BIG)
-                XIL_U32_SWAP(out);
+                out = XIL_U32_SWAP(out);
+
+            return out;
+        }
+
+        uint32_t get_u32_big()
+        {
+            uint32_t out;
+            if (!ok() || !XIL_READ_EXACTLY(sizeof(uint32_t), &out, sizeof(out), m_File))
+                throw std::runtime_error("Failed to extract uint32 from file");
+
+            m_BytesRead += sizeof(uint32_t);
+
+            if constexpr (host_endiannes() == byte_order::LITTLE)
+                out = XIL_U32_SWAP(out);
 
             return out;
         }
