@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <assert.h>
 
 #include "utils.h"
 #include "file.h"

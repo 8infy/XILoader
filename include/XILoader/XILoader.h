@@ -1,9 +1,5 @@
 #pragma once
 
-#include <string>
-#include <bitset>
-#include <assert.h>
-
 #include "utils.h"
 #include "file.h"
 #include "image.h"
@@ -18,9 +14,9 @@ namespace XIL {
         enum class FileFormat
         {
             UNKNOWN = 0,
-            BMP = 1,
-            PNG = 2,
-            JPEG = 3
+            BMP     = 1,
+            PNG     = 2,
+            JPEG    = 3
         };
     public:
         static Image load(const std::string& path, bool flip = false)

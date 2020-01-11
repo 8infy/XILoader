@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include "utils.h"
 
 namespace XIL {
@@ -13,7 +15,7 @@ namespace XIL {
         File(const std::string& path)
             : m_File(nullptr), m_BytesRead(0)
         {
-            fopen_s(&m_File, path.c_str(), "rb");
+            XIL_OPEN_FILE(m_File, path);
         }
 
         File(File&& other) noexcept

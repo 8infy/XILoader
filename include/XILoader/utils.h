@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <math.h>
+#include <bitset>
 
 // 2 to the power of x
 #define XIL_BIT(x) (1 << (x))
@@ -24,9 +25,11 @@
 #ifdef _WIN32
     #define XIL_MEMCPY(dst, dst_size, src, src_size) memcpy_s(dst, dst_size, src, src_size)
     #define XIL_READ(bytes, dst, dst_size, file) fread_s(dst, dst_size, sizeof(uint8_t), bytes, file)
+    #define XIL_OPEN_FILE(file, path) fopen_s(&file, path.c_str(), "rb")
 #else
     #define XIL_MEMCPY(dst, dst_size, src, src_size) memcpy(dst, src, src_size)
     #define XIL_READ(bytes, dst, dst_size, file) fread(dst, sizeof(uint8_t), bytes, file)
+    #define XIL_OPEN_FILE(file, path) file = fopen(path.c_str(), "rb")
 #endif
 
 #define XIL_READ_EXACTLY(bytes, dst, dst_size, file) (bytes == XIL_READ(bytes, dst, dst_size, file))
