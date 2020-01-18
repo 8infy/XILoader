@@ -48,6 +48,8 @@ namespace XIL {
             std::swap(m_Size, other.m_Size);
             std::swap(m_BytesRead, other.m_BytesRead);
             std::swap(m_Owner, other.m_Owner);
+
+            return *this;
         }
 
         void init_with(void* data, size_t size, bool has_ownership = false)
@@ -59,9 +61,9 @@ namespace XIL {
             m_Owner = has_ownership;
         }
 
-        bool has_atleast(size_t desired) const
+        bool has_atleast(size_t bytes) const
         {
-            return m_Size - m_BytesRead >= desired;
+            return m_Size - m_BytesRead >= bytes;
         }
 
         size_t bytes_left() const
