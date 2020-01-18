@@ -1,7 +1,7 @@
 #pragma once
 
 #include "image.h"
-#include "file.h"
+#include "file_reader.h"
 
 namespace XIL {
 
@@ -27,7 +27,7 @@ namespace XIL {
             uint8_t interlace_method;
         };
     public:
-        static void load(File& file, Image& image, bool force_flip)
+        static void load(DataReader& file, Image& image, bool force_flip)
         {
             CHUNK chnk{};
             IMAGE_DATA idata{};
@@ -57,7 +57,7 @@ namespace XIL {
             }
         }
     private:
-        static void read_chunk(File& file, CHUNK& into)
+        static void read_chunk(DataReader& file, CHUNK& into)
         {
             into.length = file.get_u32_big();
             into.data.resize(into.length);
@@ -68,24 +68,19 @@ namespace XIL {
             into.crc = file.get_u32_big();
         }
 
-        static void read_header(const CHUNK& from, IMAGE_DATA& into)
+        static void read_header(CHUNK& from, IMAGE_DATA& into)
         {
-            if constexpr (host_endiannes() == byte_order::LITTLE)
-            {
-                into.width = XIL_U32_SWAP(*reinterpret_cast<const uint32_t*>(&from.data[0]));
-                into.height = XIL_U32_SWAP(*reinterpret_cast<const uint32_t*>(&from.data[4]));
-            }
-            else
-            {
-                into.width  = *reinterpret_cast<const uint32_t*>(&from.data[0]);
-                into.height = *reinterpret_cast<const uint32_t*>(&from.data[4]);
-            }
+            // TODO: get rid of the STL stuff...
+            auto data = DataReader(from.data.data(), from.data.size());
 
-            into.bit_depth          = from.data[8];
-            into.color_type         = from.data[9];
-            into.compression_method = from.data[10];
-            into.filter_method      = from.data[11];
-            into.interlace_method   = from.data[12];
+            into.width = data.get_u32_big();
+            into.height = data.get_u32_big();
+
+            into.bit_depth          = data.get_u8();
+            into.color_type         = data.get_u8();
+            into.compression_method = data.get_u8();
+            into.filter_method      = data.get_u8();
+            into.interlace_method   = data.get_u8();
         }
 
         static bool is_ancillary(const CHUNK& chnk)

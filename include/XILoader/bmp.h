@@ -4,7 +4,7 @@
 #include <assert.h>
 
 #include "utils.h"
-#include "file.h"
+#include "file_reader.h"
 #include "image.h"
 
 namespace XIL
@@ -55,7 +55,7 @@ namespace XIL
             bool has_rgba_mask() { return masks.a | masks.r | masks.g | masks.b; }
         };
     public:
-        static void load(File& file, Image& image, bool force_flip)
+        static void load(DataReader& file, Image& image, bool force_flip)
         {
             BMP_DATA idata{};
 
@@ -81,7 +81,8 @@ namespace XIL
                 else if (
                     idata.dib_size == 12 ||
                     idata.dib_size == 64 ||
-                    idata.dib_size == 16)
+                    idata.dib_size == 16
+                )
                 {
                     idata.width = file.get_u16();
                     idata.height = file.get_u16();
@@ -133,13 +134,12 @@ namespace XIL
 
                 // Bit masks
                 if (idata.compression_method        &&
-                   ((idata.compression_method != 3) &&
-                   (idata.compression_method  != 6)
-                   ))
+                   (idata.compression_method != 3)  &&
+                   (idata.compression_method != 6))
                     return;
 
                 // OS22XBITMAPHEADER: Huffman 1D
-                if ((idata.compression_method == 3) && ((idata.dib_size == 16) || (idata.dib_size == 64)))
+                if (idata.compression_method == 3 && (idata.dib_size == 16 || idata.dib_size == 64))
                     return;
 
                 if (idata.has_palette())
@@ -254,7 +254,7 @@ namespace XIL
             }
         }
     private:
-        static bool load_pixel_array(File& file, BMP_DATA& image_data, ImageData::Container& to)
+        static bool load_pixel_array(DataReader& file, BMP_DATA& image_data, ImageData::Container& to)
         {
             if (image_data.has_palette())
                 return load_indexed(file, image_data, to);
@@ -264,7 +264,7 @@ namespace XIL
                 return load_raw(file, image_data, to);
         }
 
-        static bool load_indexed(File& file, BMP_DATA& idata, ImageData::Container& to)
+        static bool load_indexed(DataReader& file, BMP_DATA& idata, ImageData::Container& to)
         {
             bool result = true;
             uint8_t* row_buffer = nullptr;
@@ -377,7 +377,7 @@ namespace XIL
             return ((x * mul_table[bits]) >> shift_table[bits]) & UINT8_MAX;
         }
 
-        static bool load_sampled(File& file, BMP_DATA& idata, ImageData::Container& to)
+        static bool load_sampled(DataReader& file, BMP_DATA& idata, ImageData::Container& to)
         {
             bool result = true;
             uint8_t* row_buffer = nullptr;
@@ -456,7 +456,7 @@ namespace XIL
             return result;
         }
 
-        static bool load_raw(File& file, BMP_DATA& idata, ImageData::Container& to)
+        static bool load_raw(DataReader& file, BMP_DATA& idata, ImageData::Container& to)
         {
             bool result = true;
             uint8_t* row_buffer = nullptr;
