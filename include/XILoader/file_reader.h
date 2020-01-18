@@ -22,11 +22,11 @@ namespace XIL {
         {
         }
 
-        DataReader(void* data, size_t size, bool delete_after = false) noexcept
+        DataReader(void* data, size_t size, bool has_ownership = false) noexcept
             : m_Data(data),
             m_Size(size),
             m_BytesRead(0),
-            m_Owner(delete_after)
+            m_Owner(has_ownership)
         {
         }
 
@@ -50,13 +50,13 @@ namespace XIL {
             std::swap(m_Owner, other.m_Owner);
         }
 
-        void init_with(void* data, size_t size, bool delete_after = false)
+        void init_with(void* data, size_t size, bool has_ownership = false)
         {
             delete_if_owner();
 
             m_Data = data;
             m_Size = size;
-            m_Owner = delete_after;
+            m_Owner = has_ownership;
         }
 
         bool has_atleast(size_t desired) const
@@ -64,14 +64,19 @@ namespace XIL {
             return m_Size - m_BytesRead >= desired;
         }
 
+        size_t bytes_left() const
+        {
+            return m_Size - m_BytesRead;
+        }
+
         bool has_ownership() const
         {
             return m_Owner;
         }
 
-        size_t bytes_left() const
+        void grant_ownership()
         {
-            return m_Size - m_BytesRead;
+            m_Owner = true;
         }
 
         void revoke_ownership()
