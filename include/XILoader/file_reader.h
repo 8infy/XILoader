@@ -167,6 +167,25 @@ namespace XIL {
             XIL_MEMCPY(to, bytes, cursor(), bytes);
         }
 
+        DataReader get_subset(size_t bytes)
+        {
+            if (bytes > bytes_left())
+                throw std::runtime_error("Buffer overflow");
+
+            auto cur = cursor();
+            m_BytesRead += bytes;
+
+            return DataReader(cur, bytes);
+        }
+
+        void rewind_n(size_t bytes)
+        {
+            if (m_Size - bytes_left() < bytes)
+                throw std::runtime_error("Buffer overflow");
+
+            m_BytesRead -= bytes;
+        }
+
         size_t bytes_read() const
         {
             return m_BytesRead;
