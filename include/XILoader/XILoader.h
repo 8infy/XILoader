@@ -22,12 +22,26 @@ namespace XIL {
         static Image load(const std::string& path, bool flip = false)
         {
             Image image;
-
             DataReader file;
 
-            if (!read_file(path, file))
-                return image;
+            if (read_file(path, file))
+                load_file(file, image, flip);
 
+            return image;
+        }
+
+        static Image load_raw(void* data, size_t size, bool flip = false)
+        {
+            Image image;
+            DataReader data_viewer(data, size);
+
+            load_file(data_viewer, image, flip);
+
+            return image;
+        }
+    private:
+        static void load_file(DataReader& file, Image& image, bool flip)
+        {
             switch (deduce_file_format(file))
             {
             case FileFormat::BMP:
@@ -39,10 +53,8 @@ namespace XIL {
             case FileFormat::JPEG:
                 break;
             }
-
-            return image;
         }
-    private:
+
         static FileFormat deduce_file_format(DataReader& file)
         {
             uint8_t magic[4];
