@@ -7,6 +7,8 @@ int main()
     if (!image)
         throw std::runtime_error("Failed to load the image!");
 
+    // Size of the image in bytes
+    // same as width() * height() * channels()
     size_t size = image.size();
 
     // Get the pixel at 0, 0.

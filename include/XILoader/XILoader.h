@@ -85,3 +85,4 @@ namespace XIL {
 }
 
 using XILoader = XIL::Loader;
+using XImage   = XIL::Image;
