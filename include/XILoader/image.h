@@ -6,11 +6,12 @@
 
 namespace XIL {
 
-    template<typename ConT>
+    template<typename ElemT, typename ConT>
     struct basic_ImageData
     {
     public:
         using Container = ConT;
+        using Element = ElemT;
 
         basic_ImageData()
             : width(0),
@@ -20,11 +21,14 @@ namespace XIL {
         }
 
         Container data;
-        uint16_t  width;
-        uint16_t  height;
+        size_t    width;
+        size_t    height;
         uint8_t   channels;
+
+        const Element* data_ptr() const noexcept { return data.data(); }
+              Element* data_ptr()       noexcept { return data.data(); }
     };
-    using ImageData = basic_ImageData<std::vector<uint8_t>>;
+    using ImageData = basic_ImageData<uint8_t, std::vector<uint8_t>>;
 
     class ImageViewer
     {
@@ -39,7 +43,13 @@ namespace XIL {
     public:
         uint8_t* at_y(uint16_t y)
         {
-            size_t pixel_loc = static_cast<size_t>(m_Image.width) * y;
+            if (y >= m_Image.height)
+                throw std::runtime_error("The 'y' coordinate exceeded image height");
+
+            if (m_AtX >= m_Image.width)
+                throw std::runtime_error("The 'x' coordinate exceeded image width");
+
+            size_t pixel_loc = m_Image.width * y;
             pixel_loc += m_AtX;
             pixel_loc *= m_Image.channels;
 
@@ -51,8 +61,11 @@ namespace XIL {
             return m_Image.channels ? at_y(y) : nullptr;
         }
 
-        operator uint8_t& ()
+        operator uint8_t&()
         {
+            if (m_AtX > m_Image.data.size())
+                throw std::runtime_error("Subscript out of image size range");
+
             return m_Image.data[m_AtX];
         }
     };
@@ -63,8 +76,8 @@ namespace XIL {
         enum Format
         {
             UNKNOWN = 0,
-            RGB = 3,
-            RGBA = 4
+            RGB     = 3,
+            RGBA    = 4
         };
 
         friend class BMP;
@@ -77,34 +90,44 @@ namespace XIL {
         Image(const Image& other) = delete;
         Image& operator=(const Image& other) = delete;
     public:
-        uint8_t* data()
+        uint8_t* data() noexcept
         {
-            return ok() ? m_Image.data.data() : nullptr;
+            return ok() ? m_Image.data_ptr() : nullptr;
         }
 
-        Format channels() const
+        const uint8_t* data() const noexcept
+        {
+            return ok() ? m_Image.data_ptr() : nullptr;
+        }
+
+        Format channels() const noexcept
         {
             return static_cast<Format>(m_Image.channels);
         }
 
-        bool ok() const
+        bool ok() const noexcept
         {
-            return m_Image.width && m_Image.height;
+            return width() && height();
         }
 
-        operator bool() const
+        operator bool() const noexcept
         {
             return ok();
         }
 
-        uint16_t width() const
+        size_t width() const noexcept
         {
             return m_Image.width;
         }
 
-        uint16_t height() const
+        size_t height() const noexcept
         {
             return m_Image.height;
+        }
+
+        size_t size() const noexcept
+        {
+            return width() * height() * channels();
         }
 
         ImageViewer at_x(size_t x)
@@ -118,8 +141,11 @@ namespace XIL {
         }
 
         #if defined(__gl_h_) || defined(__GL_H__)
-        decltype(GL_RGB) gl_format()
+        auto gl_format() const noexcept
         {
+            if (!ok())
+                return static_cast<decltype(GL_RGB)>(-1);
+
             return channels() == 3 ? GL_RGB : GL_RGBA;
         }
         #endif

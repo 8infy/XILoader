@@ -19,6 +19,10 @@ namespace XIL {
             JPEG    = 3
         };
     public:
+        Loader() = delete;
+        Loader(const Loader&) = delete;
+        Loader(Loader&&) = delete;
+
         static Image load(const std::string& path, bool flip = false)
         {
             Image image;
@@ -77,8 +81,6 @@ namespace XIL {
             else
                 return FileFormat::UNKNOWN;
         }
-
-        Loader() = default;
     };
 }
 

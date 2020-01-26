@@ -34,8 +34,6 @@
 
 #define XIL_READ_EXACTLY(bytes, dst, dst_size, file) (bytes == XIL_READ(bytes, dst, dst_size, file))
 
-
-
 // the only valid pre c++20 compile time endianness detection?
 #define XIL_IS_LITTLE_ENDIAN ('ABCD' == 0x41424344UL)
 #define XIL_IS_BIG_ENDIAN    ('ABCD' == 0x44434241UL)
@@ -44,16 +42,22 @@
 #error Either your system is middle endian or my code is broken, sorry!
 #endif
 
+#if _MSVC_LANG >= 201703L || __cplusplus >= 201703L
+    #define XIL_CONSTEXPR constexpr
+#else
+    #define XIL_CONSTEXPR
+#endif
+
 namespace XIL {
 
     enum class byte_order
     {
         UNDEFINED = 0,
-        LITTLE = 1,
-        BIG = 2
+        LITTLE    = 1,
+        BIG       = 2
     };
 
-    inline constexpr byte_order host_endiannes()
+    inline XIL_CONSTEXPR byte_order host_endiannes()
     {
         return XIL_IS_LITTLE_ENDIAN ? byte_order::LITTLE : byte_order::BIG;
     }

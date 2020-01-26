@@ -101,7 +101,7 @@ namespace XIL {
 
             get_n(sizeof(uint16_t), &out);
 
-            if constexpr (host_endiannes() == byte_order::BIG)
+            if XIL_CONSTEXPR (host_endiannes() == byte_order::BIG)
                 out = XIL_U16_SWAP(out);
 
             return out;
@@ -113,7 +113,7 @@ namespace XIL {
 
             get_n(sizeof(uint32_t), &out);
 
-            if constexpr (host_endiannes() == byte_order::BIG)
+            if XIL_CONSTEXPR (host_endiannes() == byte_order::BIG)
                 out = XIL_U32_SWAP(out);
 
             return out;
@@ -125,7 +125,7 @@ namespace XIL {
 
             get_n(sizeof(uint32_t), &out);
 
-            if constexpr (host_endiannes() == byte_order::LITTLE)
+            if XIL_CONSTEXPR (host_endiannes() == byte_order::LITTLE)
                 out = XIL_U32_SWAP(out);
 
             return out;
@@ -137,7 +137,7 @@ namespace XIL {
 
             get_n(sizeof(uint32_t), &out);
 
-            if constexpr (host_endiannes() == byte_order::BIG)
+            if XIL_CONSTEXPR (host_endiannes() == byte_order::BIG)
                 out = XIL_U32_SWAP(out);
 
             // This can potentially break on some machines?

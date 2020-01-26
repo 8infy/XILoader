@@ -11,7 +11,7 @@ namespace XIL
 {
     class BMP
     {
-        struct RGBA_MASK
+        struct rgba_mask
         {
             uint32_t r;
             int32_t  r_shift;
@@ -32,9 +32,7 @@ namespace XIL
             bool has_alpha() { return a; }
         };
 
-        struct BMP_DATA {
-            BMP_DATA() = default;
-
+        struct bmp_data {
             uint32_t pao;
             uint32_t dib_size;
             bool flipped;
@@ -49,15 +47,15 @@ namespace XIL
             uint8_t channels;
             uint16_t width;
             uint16_t height;
-            RGBA_MASK masks;
+            rgba_mask masks;
 
-            bool has_palette()   { return colors; }
-            bool has_rgba_mask() { return masks.a | masks.r | masks.g | masks.b; }
+            bool has_palette()   const noexcept { return colors; }
+            bool has_rgba_mask() const noexcept { return masks.a | masks.r | masks.g | masks.b; }
         };
     public:
         static void load(DataReader& file, Image& image, bool force_flip)
         {
-            BMP_DATA idata{};
+            bmp_data idata{};
 
             try {
                 // skip magic numbers
@@ -254,7 +252,7 @@ namespace XIL
             }
         }
     private:
-        static bool load_pixel_array(DataReader& file, BMP_DATA& image_data, ImageData::Container& to)
+        static bool load_pixel_array(DataReader& file, bmp_data& image_data, ImageData::Container& to)
         {
             if (image_data.has_palette())
                 return load_indexed(file, image_data, to);
@@ -264,39 +262,34 @@ namespace XIL
                 return load_raw(file, image_data, to);
         }
 
-        static bool load_indexed(DataReader& file, BMP_DATA& idata, ImageData::Container& to)
+        static bool load_indexed(DataReader& file, bmp_data& idata, ImageData::Container& to)
         {
             bool result = true;
             uint8_t* row_buffer = nullptr;
 
             try
             {
-                uint32_t row_padded = (int)(ceil(idata.width / (8.0 / idata.bpp)) + 3) & (~3);
+                uint32_t row_padded = static_cast<uint32_t>((ceil(idata.width / (8.0 / idata.bpp)) + 3)) & (~3);
                 to.resize(3ull * idata.width * idata.height);
 
-                row_buffer = new uint8_t[row_padded];
+                DataReader row_buffer;
 
                 // current Y of the image
                 for (size_t i = 1; i < idata.height + 1ull; i++)
                 {
-                    file.get_n(row_padded, row_buffer);
+                    row_buffer = file.get_subset(row_padded);
 
                     size_t pixel_count = 0;
-                    // Perhaps theres a prettier way to do this:
-                    // e.g get rid of the 2 loops and calculate
-                    // the pixel using the % operator and pixel_count.
 
-                    // current byte
-                    for (size_t j = 0;; j++)
+                    for (;; row_buffer.next_byte())
                     {
-                        // current bit of the byte
                         for (int8_t pixel = 8 - idata.bpp; pixel >= 0; pixel -= idata.bpp)
                         {
                             pixel_count++;
 
                             uint8_t RGB[3];
 
-                            size_t palette_index = (row_buffer[j] >> pixel) & (XIL_BIT(idata.bpp) - 1);
+                            size_t palette_index = row_buffer.get_bits(pixel, static_cast<uint8_t>(idata.bpp));
 
                             RGB[0] = idata.palette[palette_index * idata.bpc + 2];
                             RGB[1] = idata.palette[palette_index * idata.bpc + 1];
@@ -377,7 +370,7 @@ namespace XIL
             return ((x * mul_table[bits]) >> shift_table[bits]) & UINT8_MAX;
         }
 
-        static bool load_sampled(DataReader& file, BMP_DATA& idata, ImageData::Container& to)
+        static bool load_sampled(DataReader& file, bmp_data& idata, ImageData::Container& to)
         {
             bool result = true;
             uint8_t* row_buffer = nullptr;
@@ -387,20 +380,20 @@ namespace XIL
                 uint32_t row_padded = (idata.width * bytes_per_pixel + 3) & (~3);
                 to.resize(static_cast<size_t>(idata.channels) * idata.width * idata.height);
 
-                row_buffer = new uint8_t[row_padded];
+                DataReader row_buffer;
 
                 for (size_t i = 1; i < idata.height + 1ull; i++)
                 {
-                    file.get_n(row_padded, row_buffer);
+                    row_buffer = file.get_subset(row_padded);
 
                     for (size_t j = 0; j < static_cast<size_t>(idata.width) * bytes_per_pixel; j += bytes_per_pixel)
                     {
                         uint32_t sample;
 
                         if (bytes_per_pixel == 2)
-                            sample = *reinterpret_cast<uint16_t*>(&row_buffer[j]);
+                            sample = row_buffer.get_u16();
                         else if (bytes_per_pixel == 4)
-                            sample = *reinterpret_cast<uint32_t*>(&row_buffer[j]);
+                            sample = row_buffer.get_u32();
                         else
                             throw std::runtime_error("This image shouldn't be sampled (not 16/32 bpp)");
 
@@ -441,8 +434,6 @@ namespace XIL
                         );
                     }
                 }
-
-                delete[] row_buffer;
             }
             catch (const std::exception& ex)
             {
@@ -456,31 +447,33 @@ namespace XIL
             return result;
         }
 
-        static bool load_raw(DataReader& file, BMP_DATA& idata, ImageData::Container& to)
+        static bool load_raw(DataReader& file, bmp_data& idata, ImageData::Container& to)
         {
             bool result = true;
-            uint8_t* row_buffer = nullptr;
 
             try {
                 uint8_t bytes_per_pixel = idata.bpp / 8;
                 uint32_t row_padded = (idata.width * bytes_per_pixel + 3) & (~3);
                 to.resize(static_cast<size_t>(idata.channels) * idata.width * idata.height);
 
-                uint8_t tmp;
-                row_buffer = new uint8_t[row_padded];
+                DataReader row_buffer;
 
                 for (size_t i = 1; i < idata.height + 1ull; i++)
                 {
-                    file.get_n(row_padded, row_buffer);
+                    row_buffer = file.get_subset(row_padded);
 
                     for (size_t j = 0; j < static_cast<size_t>(idata.width) * bytes_per_pixel; j += bytes_per_pixel)
                     {
                         // assert here to get rid of the warning
                         assert(j + 2 < row_padded);
 
-                        tmp = row_buffer[j];
-                        row_buffer[j] = row_buffer[j + 2];
-                        row_buffer[j + 2] = tmp;
+                        uint8_t RGB[4]{};
+
+                        RGB[2] = row_buffer.get_u8();
+                        RGB[1] = row_buffer.get_u8();
+                        RGB[0] = row_buffer.get_u8();
+                        if (idata.channels >= 4)
+                            RGB[3] = row_buffer.get_u8();
 
                         // since we could be forcing a different number of channels 
                         // we have to account for that
@@ -502,12 +495,10 @@ namespace XIL
                         memcpy_s(
                             to.data() + total_offset,
                             to.size() - total_offset,
-                            row_buffer + j, idata.channels
+                            RGB, idata.channels
                         );
                     }
                 }
-
-                delete[] row_buffer;
             }
             catch (const std::exception& ex)
             {

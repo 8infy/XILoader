@@ -8,7 +8,7 @@ namespace XIL {
     class PNG
     {
     private:
-        struct CHUNK
+        struct chunk
         {
             uint32_t length;
             uint8_t type[4];
@@ -16,7 +16,7 @@ namespace XIL {
             uint32_t crc;
         };
 
-        struct ZLIB_HEADER
+        struct zlib_header
         {
             uint8_t compression_method;
             uint8_t compression_info;
@@ -26,7 +26,7 @@ namespace XIL {
             bool set;
         };
 
-        struct IMAGE_DATA
+        struct png_data
         {
             uint32_t width;
             uint32_t height;
@@ -35,15 +35,15 @@ namespace XIL {
             uint8_t compression_method;
             uint8_t filter_method;
             uint8_t interlace_method;
-            ZLIB_HEADER zheader;
+            zlib_header zheader;
 
-            bool zlib_set() { return zheader.set; }
+            bool zlib_set() const noexcept { return zheader.set; }
         };
     public:
         static void load(DataReader& file, Image& image, bool force_flip)
         {
-            CHUNK chnk{};
-            IMAGE_DATA idata{};
+            chunk chnk{};
+            png_data idata{};
 
             try {
                 // skip file signature
@@ -81,7 +81,7 @@ namespace XIL {
             }
         }
     private:
-        static void validate_zlib_header(const ZLIB_HEADER& header)
+        static void validate_zlib_header(const zlib_header& header)
         {
             if (header.compression_method != 8)
                 throw std::runtime_error("Compression method for PNG has to be DEFLATE (8)");
@@ -89,7 +89,7 @@ namespace XIL {
                 throw std::runtime_error("PNG can't be compressed with preset dictionaries");
         }
 
-        static void read_chunk(DataReader& file, CHUNK& into)
+        static void read_chunk(DataReader& file, chunk& into)
         {
             into.length = file.get_u32_big();
 
@@ -99,7 +99,7 @@ namespace XIL {
             into.crc = file.get_u32_big();
         }
 
-        static void read_zlib_header(CHUNK& from, IMAGE_DATA& into)
+        static void read_zlib_header(chunk& from, png_data& into)
         {
             into.zheader.set = true;
             into.zheader.compression_method = from.data.get_bits(0, 4);
@@ -111,7 +111,7 @@ namespace XIL {
             from.data.next_byte();
         }
 
-        static void read_header(CHUNK& from, IMAGE_DATA& into)
+        static void read_header(chunk& from, png_data& into)
         {
             into.width = from.data.get_u32_big();
             into.height = from.data.get_u32_big();
@@ -123,12 +123,12 @@ namespace XIL {
             into.interlace_method   = from.data.get_u8();
         }
 
-        static bool is_ancillary(const CHUNK& chnk)
+        static bool is_ancillary(const chunk& chnk)
         {
             return islower(chnk.type[0]);
         }
 
-        static bool is_iend(const CHUNK& chnk)
+        static bool is_iend(const chunk& chnk)
         {
             return (chnk.type[0] == 'I') &&
                    (chnk.type[1] == 'E') &&
@@ -136,7 +136,7 @@ namespace XIL {
                    (chnk.type[3] == 'D');
         }
 
-        static bool is_ihdr(const CHUNK& chnk)
+        static bool is_ihdr(const chunk& chnk)
         {
             return (chnk.type[0] == 'I') &&
                    (chnk.type[1] == 'H') &&
@@ -144,7 +144,7 @@ namespace XIL {
                    (chnk.type[3] == 'R');
         }
 
-        static bool is_idat(const CHUNK& chnk)
+        static bool is_idat(const chunk& chnk)
         {
             return (chnk.type[0] == 'I') &&
                    (chnk.type[1] == 'D') &&

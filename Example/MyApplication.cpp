@@ -7,6 +7,8 @@ int main()
     if (!image)
         throw std::runtime_error("Failed to load the image!");
 
+    size_t size = image.size();
+
     // Get the pixel at 0, 0.
     auto pixel = image[0][0];
 
