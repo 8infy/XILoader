@@ -10,7 +10,7 @@
 int x, y, z;
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include <stb_image.h>
 
 #define PATH_TO(image) XIL_TEST_PATH image
 #define AS_INT(x) static_cast<int32_t>(x)
@@ -87,7 +87,7 @@ void TEST_BMP()
 
     // Cannot currently run this due to a bug in stb_image
     // https://github.com/nothings/stb/issues/870
-    //LOAD_AND_COMPARE_EACH("16bpp 4x4", PATH_TO("16bpp_4x4.bmp"));
+    // LOAD_AND_COMPARE_EACH("16bpp 4x4", PATH_TO("16bpp_4x4.bmp"));
 }
 
 
