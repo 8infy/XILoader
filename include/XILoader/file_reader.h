@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string>
+#include <vector>
+
+#include <assert.h>
 
 #include "utils.h"
 
@@ -8,6 +11,7 @@ namespace XIL {
 
     class DataReader
     {
+        friend class ChunkedBitReader;
     private:
         void* m_Data;
         size_t m_Size;
@@ -22,11 +26,11 @@ namespace XIL {
         {
         }
 
-        DataReader(void* data, size_t size, bool has_ownership = false) noexcept
+        DataReader(void* data, size_t size, bool grant_ownership = false) noexcept
             : m_Data(data),
             m_Size(size),
             m_BytesRead(0),
-            m_Owner(has_ownership)
+            m_Owner(grant_ownership)
         {
         }
 
@@ -52,13 +56,13 @@ namespace XIL {
             return *this;
         }
 
-        void init_with(void* data, size_t size, bool has_ownership = false)
+        void init_with(void* data, size_t size, bool grant_ownership = false)
         {
             delete_if_owner();
 
             m_Data = data;
             m_Size = size;
-            m_Owner = has_ownership;
+            m_Owner = grant_ownership;
         }
 
         bool has_atleast(size_t bytes) const
@@ -236,7 +240,7 @@ namespace XIL {
         }
     };
 
-    inline bool read_file(const std::string& path, DataReader& into)
+    static inline bool read_file(const std::string& path, DataReader& into)
     {
         FILE* file;
         XIL_OPEN_FILE(file, path);
@@ -258,4 +262,204 @@ namespace XIL {
 
         return true;
     }
+
+    class ChunkedBitReader
+    {
+    private:
+        struct DataChunk
+        {
+            uint8_t* data;
+            size_t size;
+            bool should_be_deleted;
+        };
+    private:
+        std::vector<DataChunk> m_ChunkedData;
+        size_t m_ActiveChunk;
+        size_t m_ActiveByte;
+        uint8_t m_CurrentBit;
+    public:
+        ChunkedBitReader() noexcept
+            : m_ActiveChunk(0),
+            m_ActiveByte(0),
+            m_CurrentBit(0)
+        {
+        }
+
+        ChunkedBitReader(void* data, size_t size, bool grant_ownership = false)
+            : ChunkedBitReader()
+        {
+            append_chunk(data, size, grant_ownership);
+        }
+
+        ChunkedBitReader(const DataReader& data)
+            : ChunkedBitReader()
+        {
+            append_chunk(data);
+        }
+
+        ChunkedBitReader(DataReader&& data)
+            : ChunkedBitReader()
+        {
+            append_chunk(std::move(data));
+        }
+
+        // This function should potentially allow to preserve the current offset of DataReader.
+        // However, that would require to keep the byte offset for each chunk
+        // and would overall complicate how we do things. Is it really something that we want?
+        void append_chunk(DataReader&& data)
+        {
+            append_chunk(data.m_Data, data.m_Size, data.has_ownership());
+        }
+
+        void append_chunk(const DataReader& data)
+        {
+            append_chunk(data.m_Data, data.m_Size);
+        }
+
+        void append_chunk(void* data, size_t size, bool grant_ownership = false)
+        {
+            m_ChunkedData.push_back({ static_cast<uint8_t*>(data), size, grant_ownership });
+        }
+
+        size_t bytes_left() const
+        {
+            size_t total = bytes_left_for_current_chunk();
+
+            for (size_t i = m_ActiveChunk + 1; i < m_ChunkedData.size(); i++)
+                total += m_ChunkedData[i].size;
+
+            return total;
+        }
+
+        void skip_bytes(size_t count)
+        {
+            for (;;)
+            {
+                size_t this_chunk = bytes_left_for_current_chunk();
+
+                if (count < this_chunk)
+                {
+                    m_ActiveByte += count;
+                }
+                else if (count > this_chunk)
+                {
+                    count -= this_chunk;
+
+                    m_ActiveChunk++;
+
+                    if (m_ActiveChunk > m_ChunkedData.size() - 1)
+                        throw std::runtime_error("Buffer overflow");
+
+                    m_ActiveByte = 0;
+                }
+
+                m_CurrentBit = 0;
+            }
+        }
+
+        uint32_t get_bits(uint8_t count)
+        {
+            if (count < bits_left_for_current_byte())
+                return (current_byte() >> m_CurrentBit) & XIL_BITS(count);
+            else
+            {
+                // use a for loop here?
+                //uint32_t bits = (current_byte() >> m_CurrentBit) & XIL_BITS(count);
+            }
+        }
+
+        uint32_t get_bits_reversed(uint8_t count)
+        {
+            // implement me
+            return 0;
+        }
+
+        void skip_bits(size_t count)
+        {
+            // refactor
+            // something like count / 8
+
+            if (bits_left_for_current_byte() > count)
+            {
+                m_CurrentBit += static_cast<uint8_t>(count);
+            }
+            else
+            {
+                count -= bits_left_for_current_byte();
+
+                for (;;)
+                {
+                    if (count > 8)
+                    {
+                        flush_byte();
+                        count -= 8;
+                    }
+                    else
+                    {
+                        m_CurrentBit = static_cast<uint8_t>(count);
+                        break;
+                    }
+                }
+            }
+        }
+
+        void flush_byte()
+        {
+            if (bytes_left_for_current_chunk())
+            {
+                m_ActiveByte++;
+                m_CurrentBit = 0;
+            }
+            else
+                next_chunk();
+        }
+
+        ~ChunkedBitReader()
+        {
+            for (const auto& chnk : m_ChunkedData)
+            {
+                if (chnk.should_be_deleted)
+                    delete[] chnk.data;
+            }
+        }
+    private:
+        size_t bytes_left_for_current_chunk() const noexcept
+        {
+            auto bytes_left = current_chunk().size - m_ActiveByte;
+
+            if (m_CurrentBit)
+                return bytes_left ? bytes_left - 1 : 0;
+            else
+                return bytes_left;
+        }
+
+        uint8_t bits_left_for_current_byte() const noexcept
+        {
+            assert(m_CurrentBit < 8);
+
+            return 8 - m_CurrentBit;
+        }
+
+        const DataChunk& current_chunk() const noexcept
+        {
+            return m_ChunkedData[m_ActiveChunk];
+        }
+
+        void next_chunk()
+        {
+            if (m_ChunkedData.size() - 1 == m_ActiveChunk)
+                throw std::runtime_error("Buffer overflow");
+            else
+            {
+                m_ActiveChunk++;
+                m_ActiveByte = 0;
+                m_CurrentBit = 0;
+            }
+        }
+
+        uint8_t current_byte() const
+        {
+            return current_chunk().data[m_ActiveByte];
+        }
+    };
 }
