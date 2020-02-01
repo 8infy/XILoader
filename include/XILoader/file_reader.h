@@ -270,17 +270,16 @@ namespace XIL {
         {
             uint8_t* data;
             size_t size;
+            size_t active_byte;
             bool should_be_deleted;
         };
     private:
         std::vector<DataChunk> m_ChunkedData;
         size_t m_ActiveChunk;
-        size_t m_ActiveByte;
         uint8_t m_CurrentBit;
     public:
         ChunkedBitReader() noexcept
             : m_ActiveChunk(0),
-            m_ActiveByte(0),
             m_CurrentBit(0)
         {
         }
@@ -333,39 +332,68 @@ namespace XIL {
 
         void skip_bytes(size_t count)
         {
+            auto current_chunk_bytes = bytes_left_for_current_chunk();
+
             for (;;)
             {
-                size_t this_chunk = bytes_left_for_current_chunk();
-
-                if (count < this_chunk)
+                if (current_chunk_bytes < count)
                 {
-                    m_ActiveByte += count;
+                    current_chunk().active_byte += count;
+                    break;
                 }
-                else if (count > this_chunk)
+                else
                 {
-                    count -= this_chunk;
-
-                    m_ActiveChunk++;
-
-                    if (m_ActiveChunk > m_ChunkedData.size() - 1)
-                        throw std::runtime_error("Buffer overflow");
-
-                    m_ActiveByte = 0;
+                    count -= current_chunk_bytes;
+                    next_chunk();
                 }
-
-                m_CurrentBit = 0;
             }
+
+            m_CurrentBit = 0;
+        }
+
+        void skip_bits(size_t count)
+        {
+            size_t full_bytes = count / 8;
+
+            // count is now within a single byte range
+            count -= full_bytes * 8;
+
+            if (bits_left_for_current_byte() < count)
+            {
+                count -= 8 - m_CurrentBit; // 1. skip current byte bits
+                skip_bytes(full_bytes);    // 2. skip full bytes
+                m_CurrentBit = count;      // 3. add whats left in count
+            }
+            else
+                m_CurrentBit += count;
         }
 
         uint32_t get_bits(uint8_t count)
         {
-            if (count < bits_left_for_current_byte())
-                return (current_byte() >> m_CurrentBit) & XIL_BITS(count);
-            else
+            if (count > 32)
+                throw std::runtime_error("Maximum bit count is 32, got a larger value");
+
+            uint8_t bit_offset = 0;
+
+            uint32_t value = 0;
+
+            for (;;)
             {
-                // use a for loop here?
-                //uint32_t bits = (current_byte() >> m_CurrentBit) & XIL_BITS(count);
+                if (bits_left_for_current_byte() >= count)
+                {
+                    value |= (current_byte() << bit_offset) & (XIL_BITS(count + 1) << bit_offset);
+                    break;
+                }
+                else
+                {
+                    value |= current_byte() << bit_offset;
+                    bit_offset += bits_left_for_current_byte();
+                    count -= bits_left_for_current_byte();
+                    flush_byte();
+                }
             }
+
+            return value;
         }
 
         uint32_t get_bits_reversed(uint8_t count)
@@ -374,40 +402,11 @@ namespace XIL {
             return 0;
         }
 
-        void skip_bits(size_t count)
-        {
-            // refactor
-            // something like count / 8
-
-            if (bits_left_for_current_byte() > count)
-            {
-                m_CurrentBit += static_cast<uint8_t>(count);
-            }
-            else
-            {
-                count -= bits_left_for_current_byte();
-
-                for (;;)
-                {
-                    if (count > 8)
-                    {
-                        flush_byte();
-                        count -= 8;
-                    }
-                    else
-                    {
-                        m_CurrentBit = static_cast<uint8_t>(count);
-                        break;
-                    }
-                }
-            }
-        }
-
         void flush_byte()
         {
             if (bytes_left_for_current_chunk())
             {
-                m_ActiveByte++;
+                current_chunk().active_byte++;
                 m_CurrentBit = 0;
             }
             else
@@ -425,12 +424,7 @@ namespace XIL {
     private:
         size_t bytes_left_for_current_chunk() const noexcept
         {
-            auto bytes_left = current_chunk().size - m_ActiveByte;
-
-            if (m_CurrentBit)
-                return bytes_left ? bytes_left - 1 : 0;
-            else
-                return bytes_left;
+           return current_chunk().size - current_chunk().active_byte;
         }
 
         uint8_t bits_left_for_current_byte() const noexcept
@@ -445,6 +439,11 @@ namespace XIL {
             return m_ChunkedData[m_ActiveChunk];
         }
 
+        DataChunk& current_chunk() noexcept
+        {
+            return m_ChunkedData[m_ActiveChunk];
+        }
+
         void next_chunk()
         {
             if (m_ChunkedData.size() - 1 == m_ActiveChunk)
@@ -452,14 +451,13 @@ namespace XIL {
             else
             {
                 m_ActiveChunk++;
-                m_ActiveByte = 0;
                 m_CurrentBit = 0;
             }
         }
 
         uint8_t current_byte() const
         {
-            return current_chunk().data[m_ActiveByte];
+            return current_chunk().data[current_chunk().active_byte] >> m_CurrentBit;
         }
     };
 }
