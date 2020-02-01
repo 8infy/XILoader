@@ -302,22 +302,31 @@ namespace XIL {
             append_chunk(std::move(data));
         }
 
-        // This function should potentially allow to preserve the current offset of DataReader.
-        // However, that would require to keep the byte offset for each chunk
-        // and would overall complicate how we do things. Is it really something that we want?
-        void append_chunk(DataReader&& data)
+        void append_chunk(DataReader&& data, bool preserve_offset = true)
         {
-            append_chunk(data.m_Data, data.m_Size, data.has_ownership());
+            append_chunk(
+                data.m_Data,
+                data.m_Size,
+                preserve_offset ? data.m_BytesRead : 0,
+                data.has_ownership()
+            );
+
+            data.revoke_ownership();
         }
 
-        void append_chunk(const DataReader& data)
+        void append_chunk(const DataReader& data, bool preserve_offset = true)
         {
-            append_chunk(data.m_Data, data.m_Size);
+            append_chunk(data.m_Data, data.m_Size, preserve_offset ? data.m_BytesRead : 0, false);
         }
 
         void append_chunk(void* data, size_t size, bool grant_ownership = false)
         {
-            m_ChunkedData.push_back({ static_cast<uint8_t*>(data), size, grant_ownership });
+            append_chunk(data, size, 0, grant_ownership);
+        }
+
+        void append_chunk(void* data, size_t size, size_t offset, bool grant_ownership = false)
+        {
+            m_ChunkedData.push_back({ static_cast<uint8_t*>(data), size, offset, grant_ownership });
         }
 
         size_t bytes_left() const
@@ -381,12 +390,14 @@ namespace XIL {
             {
                 if (bits_left_for_current_byte() >= count)
                 {
-                    value |= (current_byte() << bit_offset) & (XIL_BITS(count + 1) << bit_offset);
+                    value |= (current_byte() << bit_offset) & (XIL_BITS(count) << bit_offset);
+                    m_CurrentBit += count;
                     break;
                 }
                 else
                 {
-                    value |= current_byte() << bit_offset;
+                    auto bit_limiter = count > 8 ? UINT8_MAX : XIL_BITS(count + 1);
+                    value |= current_byte() << bit_offset & (bit_limiter << bit_offset);
                     bit_offset += bits_left_for_current_byte();
                     count -= bits_left_for_current_byte();
                     flush_byte();
@@ -394,12 +405,6 @@ namespace XIL {
             }
 
             return value;
-        }
-
-        uint32_t get_bits_reversed(uint8_t count)
-        {
-            // implement me
-            return 0;
         }
 
         void flush_byte()
@@ -424,13 +429,11 @@ namespace XIL {
     private:
         size_t bytes_left_for_current_chunk() const noexcept
         {
-           return current_chunk().size - current_chunk().active_byte;
+           return current_chunk().size - (current_chunk().active_byte + 1);
         }
 
         uint8_t bits_left_for_current_byte() const noexcept
         {
-            assert(m_CurrentBit < 8);
-
             return 8 - m_CurrentBit;
         }
 

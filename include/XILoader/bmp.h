@@ -4,7 +4,7 @@
 #include <assert.h>
 
 #include "utils.h"
-#include "file_reader.h"
+#include "data_reader.h"
 #include "image.h"
 
 namespace XIL

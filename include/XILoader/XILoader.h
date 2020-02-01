@@ -1,7 +1,7 @@
 #pragma once
 
 #include "utils.h"
-#include "file_reader.h"
+#include "data_reader.h"
 #include "image.h"
 #include "bmp.h"
 #include "png.h"
