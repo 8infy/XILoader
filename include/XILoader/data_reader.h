@@ -407,8 +407,13 @@ namespace XIL {
             return value;
         }
 
-        void flush_byte()
+        // skip_if_unused - skip the byte even if it hasn't been read from
+        void flush_byte(bool skip_if_unused = true)
         {
+            if (!skip_if_unused)
+                if (bits_left_for_current_byte() == 8)
+                    return;
+
             if (bytes_left_for_current_chunk())
             {
                 current_chunk().active_byte++;

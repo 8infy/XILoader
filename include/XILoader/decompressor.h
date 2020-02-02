@@ -42,6 +42,7 @@ namespace XIL {
                 {
                 case 0:
                     // uncompressed
+                    inflate_uncompressed(bit_stream, uncompressed_stream);
                     break;
                 case 1:
                     // fixed huffman codes
@@ -157,6 +158,22 @@ namespace XIL {
             }
 
             decompress_block(bit_stream, litlen_tree, distance_tree, uncompressed_stream);
+        }
+
+        static void inflate_uncompressed(ChunkedBitReader& bit_stream, ImageData::Container& uncompressed_stream)
+        {
+            bit_stream.flush_byte(false);
+
+            uint16_t length  = bit_stream.get_bits(16);
+            uint16_t nlength = bit_stream.get_bits(16);
+
+            if (length != ~nlength)
+                throw std::runtime_error("LEN/NLEN mismatch");
+
+            uncompressed_stream.reserve(uncompressed_stream.size() + length);
+
+            while (length--)
+                uncompressed_stream.push_back(bit_stream.get_bits(8));
         }
 
         template<typename HuffmanT>
@@ -276,7 +293,6 @@ namespace XIL {
                     }
                 }
             } while (symbol != 256);
-
         }
     };
 }
