@@ -383,21 +383,23 @@ namespace XIL {
                 throw std::runtime_error("Maximum bit count is 32, got a larger value");
 
             uint8_t bit_offset = 0;
-
             uint32_t value = 0;
 
             for (;;)
             {
+                if (!bits_left_for_current_byte())
+                    flush_byte();
+
                 if (bits_left_for_current_byte() >= count)
                 {
-                    value |= (current_byte() << bit_offset) & (XIL_BITS(count) << bit_offset);
+                    value |= ((current_byte() & XIL_BITS(count)) << bit_offset);
                     m_CurrentBit += count;
                     break;
                 }
                 else
                 {
-                    auto bit_limiter = count > 8 ? UINT8_MAX : XIL_BITS(count + 1);
-                    value |= current_byte() << bit_offset & (bit_limiter << bit_offset);
+                    auto bit_limiter = count > 8 ? XIL_BITS(8) : XIL_BITS(count);
+                    value |= ((current_byte() & bit_limiter) << bit_offset);
                     bit_offset += bits_left_for_current_byte();
                     count -= bits_left_for_current_byte();
                     flush_byte();
@@ -431,6 +433,7 @@ namespace XIL {
                     delete[] chnk.data;
             }
         }
+
     private:
         size_t bytes_left_for_current_chunk() const noexcept
         {
