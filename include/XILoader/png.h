@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "image.h"
 #include "data_stream.h"
 #include "decompressor.h"
@@ -83,8 +85,141 @@ namespace XIL {
             Inflator::inflate(bit_stream, uncompressed_data);
 
             // process the decompressed data
+            unfilter_values(idata, uncompressed_data);
         }
     private:
+        static void unfilter_values(const png_data& idata, ImageData::Container& in_out)
+        {
+            // 2 if we're dealing with with a 16bpp, 1 otherwise
+            size_t bytes_per_channel = idata.bit_depth <= 8 ? 1 : 2;
+
+            // in other words bytes per pixel
+            size_t channels_per_pixel = 0;
+
+            if (idata.color_type == 0 || idata.color_type == 3)
+                channels_per_pixel = 1;
+            else if (idata.color_type == 2)
+                channels_per_pixel = 3;
+            else if (idata.color_type == 4)
+                channels_per_pixel = bytes_per_channel;
+            else if (idata.color_type == 6)
+                channels_per_pixel = 4;
+
+            for (size_t y = 0; y < idata.height; y++)
+            {
+                auto end_of_row = y * channels_per_pixel * idata.width + y;
+
+                uint8_t filter_method = in_out[end_of_row];
+
+                switch (filter_method)
+                {
+                case 0:
+                    continue;
+                case 1:
+                    for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
+                    {
+                        // pixel to the left is 0
+                        // value is unchanged
+                        if (x <= channels_per_pixel) continue;
+
+                        in_out[end_of_row + x] = in_out[end_of_row + x] + in_out[x - channels_per_pixel * bytes_per_channel];
+                    }
+                    continue;
+                case 2:
+                    if (y == 0) continue; // we don't have any pixels above so values are unchanged
+
+                    for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
+                    {
+                        in_out[end_of_row + x] = in_out[end_of_row + x] + in_out[end_of_row + x - idata.width * channels_per_pixel - 1];
+                    }
+                    continue;
+                case 3:
+                    if (y == 0) continue; // we don't have any pixels above so values are unchanged
+
+                    for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
+                    {
+                        size_t to_the_left;
+
+                        // pixel to the left is 0
+                        // value is unchanged
+                        if (x <= channels_per_pixel)
+                            to_the_left = 0;
+                        else
+                            to_the_left = in_out[x - channels_per_pixel * bytes_per_channel];
+
+                        size_t above = in_out[x - idata.width * channels_per_pixel - 1];
+
+                        uint8_t value = floor((to_the_left + above) / 2.0);
+
+                        in_out[x] = in_out[x] + value;
+                    }
+                    continue;
+                case 4:
+                    if (y == 0) continue; // we don't have any pixels above so values are unchanged
+
+                    for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
+                    {
+                        int32_t to_the_left;
+                        int32_t above_and_to_the_left;
+
+                        // pixel to the left is 0
+                        // value is unchanged
+                        if (x <= channels_per_pixel)
+                        {
+                            to_the_left = 0;
+                            above_and_to_the_left = 0;
+                        }
+                        else
+                        {
+                            to_the_left = in_out[end_of_row + x - channels_per_pixel * bytes_per_channel];
+                            above_and_to_the_left = in_out[end_of_row + x - (idata.width + 1ull) * channels_per_pixel - 1];
+                        }
+
+                        int32_t above = in_out[end_of_row + x - idata.width * channels_per_pixel - 1];
+
+                        // Paeth
+                        int32_t p = to_the_left + above - above_and_to_the_left;
+                        int32_t pa = abs(p - to_the_left);
+                        int32_t pb = abs(p - above);
+                        int32_t pc = abs(p - above_and_to_the_left);
+
+                        uint8_t value = 0;
+
+                        if (pa <= pb && pa <= pc)
+                            value = to_the_left;
+                        else if (pb <= pc)
+                            value = above;
+                        else
+                            value = above_and_to_the_left;
+
+                        in_out[end_of_row + x] = in_out[end_of_row + x] + value;
+                    }
+                }
+            }
+
+            // remove all scanline filter method bytes
+            size_t bytes_per_row = channels_per_pixel * idata.width + 1;
+            size_t byte_count = 0;
+
+            auto is_filter_method_byte =
+                [&](uint8_t)
+            {
+                if ((byte_count % bytes_per_row) == 0)
+                {
+                    byte_count++;
+                    return true;
+                }
+                else
+                {
+                    byte_count++;
+                    return false;
+                }
+            };
+
+            auto erase_begin = std::remove_if(in_out.begin(), in_out.end(), is_filter_method_byte);
+            in_out.erase(erase_begin, in_out.end());
+        }
+
         static void validate_zlib_header(const zlib_header& header)
         {
             if (header.compression_method != 8)

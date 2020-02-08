@@ -170,7 +170,7 @@ namespace XIL {
             uint16_t length  = bit_stream.get_bits(16);
             uint16_t nlength = bit_stream.get_bits(16);
 
-            if (length != ~nlength)
+            if (length != static_cast<uint16_t>(~nlength))
                 throw std::runtime_error("LEN/NLEN mismatch");
 
             uncompressed_stream.reserve(uncompressed_stream.size() + length);
