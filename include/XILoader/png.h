@@ -47,49 +47,42 @@ namespace XIL {
             png_data idata{};
             ChunkedBitReader bit_stream{};
 
-            try {
-                // skip file signature
-                file_stream.skip_n(8);
+            // skip file signature
+            file_stream.skip_n(8);
 
-                // go through the entire file
-                // collect all the necessary image data
-                // and concatenate all the idat chunks
-                for (;;)
+            // go through the entire file
+            // collect all the necessary image data
+            // and concatenate all the idat chunks
+            for (;;)
+            {
+                read_chunk(file_stream, chnk);
+
+                if (is_iend(chnk)) break;
+                if (is_ancillary(chnk)) continue;
+
+                if (is_ihdr(chnk))
                 {
-                    read_chunk(file_stream, chnk);
-
-                    if (is_iend(chnk)) break;
-                    if (is_ancillary(chnk)) continue;
-
-                    if (is_ihdr(chnk))
-                    {
-                        read_header(chnk, idata);
-                        continue;
-                    }
-
-                    if (is_idat(chnk))
-                    {
-                        if (!idata.zlib_set())
-                        {
-                            read_zlib_header(chnk, idata);
-                            validate_zlib_header(idata.zheader);
-                        }
-
-                        bit_stream.append_chunk(chnk.data);
-                    }
+                    read_header(chnk, idata);
+                    continue;
                 }
 
-                // decompress the data
-                ImageData::Container uncompressed_data;
-                Inflator::inflate(bit_stream, uncompressed_data);
+                if (is_idat(chnk))
+                {
+                    if (!idata.zlib_set())
+                    {
+                        read_zlib_header(chnk, idata);
+                        validate_zlib_header(idata.zheader);
+                    }
 
-                // process the decompressed data
+                    bit_stream.append_chunk(chnk.data);
+                }
             }
-            catch (const std::exception& ex)
-            {
-                XIL_UNUSED(ex);
-                return;
-            }
+
+            // decompress the data
+            ImageData::Container uncompressed_data;
+            Inflator::inflate(bit_stream, uncompressed_data);
+
+            // process the decompressed data
         }
     private:
         static void validate_zlib_header(const zlib_header& header)
@@ -114,17 +107,17 @@ namespace XIL {
         {
             into.zheader.set = true;
             into.zheader.compression_method = from.data.get_bits(0, 4);
-            into.zheader.compression_info = from.data.get_bits(4, 4);
+            into.zheader.compression_info   = from.data.get_bits(4, 4);
             from.data.next_byte();
             into.zheader.fcheck = from.data.get_bits(0, 5);
-            into.zheader.fdict = from.data.get_bit(5);
+            into.zheader.fdict  = from.data.get_bit(5);
             into.zheader.flevel = from.data.get_bits(6, 2);
             from.data.next_byte();
         }
 
         static void read_header(chunk& from, png_data& into)
         {
-            into.width = from.data.get_u32_big();
+            into.width  = from.data.get_u32_big();
             into.height = from.data.get_u32_big();
 
             into.bit_depth          = from.data.get_u8();
