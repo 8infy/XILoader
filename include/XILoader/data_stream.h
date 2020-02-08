@@ -9,7 +9,7 @@
 
 namespace XIL {
 
-    class DataReader
+    class DataStream
     {
         friend class ChunkedBitReader;
     private:
@@ -18,7 +18,7 @@ namespace XIL {
         size_t m_BytesRead;
         bool m_Owner;
     public:
-        DataReader() noexcept
+        DataStream() noexcept
             : m_Data(nullptr),
             m_Size(0),
             m_BytesRead(0),
@@ -26,7 +26,7 @@ namespace XIL {
         {
         }
 
-        DataReader(void* data, size_t size, bool grant_ownership = false) noexcept
+        DataStream(void* data, size_t size, bool grant_ownership = false) noexcept
             : m_Data(data),
             m_Size(size),
             m_BytesRead(0),
@@ -34,11 +34,11 @@ namespace XIL {
         {
         }
 
-        DataReader(const DataReader& other) = delete;
-        DataReader& operator=(const DataReader& other) = delete;
+        DataStream(const DataStream& other) = delete;
+        DataStream& operator=(const DataStream& other) = delete;
 
-        DataReader(DataReader&& other) noexcept
-            : DataReader()
+        DataStream(DataStream&& other) noexcept
+            : DataStream()
         {
             std::swap(m_Data, other.m_Data);
             std::swap(m_Size, other.m_Size);
@@ -46,7 +46,7 @@ namespace XIL {
             std::swap(m_Owner, other.m_Owner);
         }
 
-        DataReader& operator=(DataReader&& other) noexcept
+        DataStream& operator=(DataStream&& other) noexcept
         {
             std::swap(m_Data, other.m_Data);
             std::swap(m_Size, other.m_Size);
@@ -171,7 +171,7 @@ namespace XIL {
             XIL_MEMCPY(to, bytes, cursor(), bytes);
         }
 
-        DataReader get_subset(size_t bytes)
+        DataStream get_subset(size_t bytes)
         {
             if (bytes > bytes_left())
                 throw std::runtime_error("Buffer overflow");
@@ -179,7 +179,7 @@ namespace XIL {
             auto cur = cursor();
             m_BytesRead += bytes;
 
-            return DataReader(cur, bytes);
+            return DataStream(cur, bytes);
         }
 
         void rewind_n(size_t bytes)
@@ -222,7 +222,7 @@ namespace XIL {
             skip_n(1);
         }
 
-        ~DataReader()
+        ~DataStream()
         {
             delete_if_owner();
         }
@@ -240,12 +240,12 @@ namespace XIL {
         }
     };
 
-    static inline bool read_file(const std::string& path, DataReader& into)
+    static inline void read_file(const std::string& path, DataStream& into)
     {
         FILE* file;
         XIL_OPEN_FILE(file, path);
 
-        if (!file) return false;
+        if (!file) throw std::runtime_error("Couldn't open the file");
 
         fseek(file, 0, SEEK_END);
         size_t fsize = ftell(file);
@@ -255,12 +255,10 @@ namespace XIL {
         if (!XIL_READ_EXACTLY(fsize, data, fsize, file))
         {
             delete[] data;
-            return false;
+            throw std::runtime_error("Couldn't read the file");
         }
 
         into.init_with(data, fsize, true);
-
-        return true;
     }
 
     class ChunkedBitReader
@@ -290,19 +288,19 @@ namespace XIL {
             append_chunk(data, size, grant_ownership);
         }
 
-        ChunkedBitReader(const DataReader& data)
+        ChunkedBitReader(const DataStream& data)
             : ChunkedBitReader()
         {
             append_chunk(data);
         }
 
-        ChunkedBitReader(DataReader&& data)
+        ChunkedBitReader(DataStream&& data)
             : ChunkedBitReader()
         {
             append_chunk(std::move(data));
         }
 
-        void append_chunk(DataReader&& data, bool preserve_offset = true)
+        void append_chunk(DataStream&& data, bool preserve_offset = true)
         {
             append_chunk(
                 data.m_Data,
@@ -314,7 +312,7 @@ namespace XIL {
             data.revoke_ownership();
         }
 
-        void append_chunk(const DataReader& data, bool preserve_offset = true)
+        void append_chunk(const DataStream& data, bool preserve_offset = true)
         {
             append_chunk(data.m_Data, data.m_Size, preserve_offset ? data.m_BytesRead : 0, false);
         }

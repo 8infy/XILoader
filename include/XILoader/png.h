@@ -1,7 +1,7 @@
 #pragma once
 
 #include "image.h"
-#include "data_reader.h"
+#include "data_stream.h"
 #include "decompressor.h"
 
 namespace XIL {
@@ -13,7 +13,7 @@ namespace XIL {
         {
             uint32_t length;
             uint8_t type[4];
-            DataReader data;
+            DataStream data;
             uint32_t crc;
         };
 
@@ -41,7 +41,7 @@ namespace XIL {
             bool zlib_set() const noexcept { return zheader.set; }
         };
     public:
-        static void load(DataReader& file_stream, Image& image, bool force_flip)
+        static void load(DataStream& file_stream, Image& image, bool force_flip)
         {
             chunk chnk{};
             png_data idata{};
@@ -100,7 +100,7 @@ namespace XIL {
                 throw std::runtime_error("PNG can't be compressed with preset dictionaries");
         }
 
-        static void read_chunk(DataReader& file, chunk& into)
+        static void read_chunk(DataStream& file, chunk& into)
         {
             into.length = file.get_u32_big();
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "data_reader.h"
+#include "data_stream.h"
 
 #define FIXED_LITLEN 288
 #define MAX_LITLEN 286

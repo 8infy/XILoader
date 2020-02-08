@@ -1,7 +1,7 @@
 #pragma once
 
 #include "utils.h"
-#include "data_reader.h"
+#include "data_stream.h"
 #include "image.h"
 #include "bmp.h"
 #include "png.h"
@@ -25,26 +25,50 @@ namespace XIL {
 
         static Image load(const std::string& path, bool flip = false)
         {
-            Image image;
-            DataReader file;
-
-            if (read_file(path, file))
-                load_file(file, image, flip);
-
-            return image;
+            try {
+                return load_verbose(path, flip);
+            }
+            catch (...) // suppress any exceptions
+            {
+                return {};
+            }
         }
 
         static Image load_raw(void* data, size_t size, bool flip = false)
         {
-            Image image;
-            DataReader data_viewer(data, size);
+            try {
+                return load_raw_verbose(data, size, flip);
+            }
+            catch (...) // suppress any exceptions
+            {
+                return {};
+            }
+        }
 
-            load_file(data_viewer, image, flip);
+        // Any exceptions encountered during the process of loading are rethrown to the caller
+        static Image load_verbose(const std::string& path, bool flip = false)
+        {
+            Image image;
+            DataStream file_stream;
+
+            read_file(path, file_stream);
+            load_image(file_stream, image, flip);
+
+            return image;
+        }
+
+        // Any exceptions encountered during the process of loading are rethrown to the caller
+        static Image load_raw_verbose(void* data, size_t size, bool flip = false)
+        {
+            Image image;
+            DataStream data_stream(data, size);
+
+            load_image(data_stream, image, flip);
 
             return image;
         }
     private:
-        static void load_file(DataReader& file, Image& image, bool flip)
+        static void load_image(DataStream& file, Image& image, bool flip)
         {
             switch (deduce_file_format(file))
             {
@@ -55,11 +79,13 @@ namespace XIL {
                 PNG::load(file, image, flip);
                 break;
             case FileFormat::JPEG:
-                break;
+                throw std::runtime_error("JPEG loading is not yet implemented");
+            default:
+                throw std::runtime_error("Unknown image format");
             }
         }
 
-        static FileFormat deduce_file_format(DataReader& file)
+        static FileFormat deduce_file_format(DataStream& file)
         {
             uint8_t magic[4];
             file.peek_n(4, magic);
