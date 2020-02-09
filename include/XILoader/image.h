@@ -81,6 +81,7 @@ namespace XIL {
         };
 
         friend class BMP;
+        friend class PNG;
     private:
         ImageData m_Image;
     public:

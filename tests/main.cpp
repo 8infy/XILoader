@@ -90,11 +90,21 @@ void TEST_BMP()
     // LOAD_AND_COMPARE_EACH("16bpp 4x4", PATH_TO("16bpp_4x4.bmp"));
 }
 
-
+void TEST_PNG()
+{
+    PRINT_TITLE("PNG LOADING TEST STARTS");
+    LOAD_AND_COMPARE_EACH("8bpc RGB 400x268", PATH_TO("8pbc_rgb_400x268.png"));
+    LOAD_AND_COMPARE_EACH("8bpc RGB 1419x1001", PATH_TO("8bpc_rgb_1419x1001.png"));
+    LOAD_AND_COMPARE_EACH("8bpc RGBA 4x4", PATH_TO("8bpc_rgba_4x4.png"));
+    LOAD_AND_COMPARE_EACH("8bpc RGBA 1473x1854", PATH_TO("8bpc_rgba_1473x1854.png"));
+    LOAD_AND_COMPARE_EACH("8bpc RGBA 2816x3088", PATH_TO("8pbc_rgba_2816x3088.png"));
+    PRINT_END("PNG LOADING TEST DONE");
+}
 
 int main(int argc, char** argv)
 {
     TEST_BMP();
+    TEST_PNG();
 
     std::cin.get();
     return 0;

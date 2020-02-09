@@ -84,8 +84,40 @@ namespace XIL {
             ImageData::Container uncompressed_data;
             Inflator::inflate(bit_stream, uncompressed_data);
 
-            // process the decompressed data
+            // reconstruct the values by removing filters
             unfilter_values(idata, uncompressed_data);
+
+            // - just return if RGB/RGBA
+            // - do some more processing for palleted/sampled data
+            switch (idata.color_type)
+            {
+            case 0: // grayscale
+                throw std::runtime_error("Grayscale PNGs are not yet supported");
+            case 2: // RGB
+                image.m_Image.channels = 3;
+                image.m_Image.width = idata.width;
+                image.m_Image.height = idata.height;
+
+                if (idata.bit_depth == 8)
+                    image.m_Image.data = std::move(uncompressed_data);
+                else // translate 16bpc into 8 bpc
+                    throw std::runtime_error("16bpc PNGs are not yet supported");
+                break;
+            case 3: // decode the palleted data
+                throw std::runtime_error("Palleted PNGs are not yet supported");
+            case 4: // grayscale + alpha
+                throw std::runtime_error("Grayscale PNGs are not yet supported");
+            case 6: // RGBA
+                image.m_Image.channels = 4;
+                image.m_Image.width = idata.width;
+                image.m_Image.height = idata.height;
+
+                if (idata.bit_depth == 8)
+                    image.m_Image.data = std::move(uncompressed_data);
+                else // translate 16bpc into 8 bpc
+                    throw std::runtime_error("16bpc PNGs are not yet supported");
+                break;
+            }
         }
     private:
         static void unfilter_values(const png_data& idata, ImageData::Container& in_out)
@@ -122,7 +154,7 @@ namespace XIL {
                         // value is unchanged
                         if (x <= channels_per_pixel) continue;
 
-                        in_out[end_of_row + x] = in_out[end_of_row + x] + in_out[x - channels_per_pixel * bytes_per_channel];
+                        in_out[end_of_row + x] = in_out[end_of_row + x] + in_out[end_of_row + x - channels_per_pixel * bytes_per_channel];
                     }
                     continue;
                 case 2:
@@ -134,8 +166,6 @@ namespace XIL {
                     }
                     continue;
                 case 3:
-                    if (y == 0) continue; // we don't have any pixels above so values are unchanged
-
                     for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
                     {
                         size_t to_the_left;
@@ -145,18 +175,21 @@ namespace XIL {
                         if (x <= channels_per_pixel)
                             to_the_left = 0;
                         else
-                            to_the_left = in_out[x - channels_per_pixel * bytes_per_channel];
+                            to_the_left = in_out[end_of_row + x - channels_per_pixel * bytes_per_channel];
 
-                        size_t above = in_out[x - idata.width * channels_per_pixel - 1];
+                        size_t above;
+
+                        if (y == 0)
+                            above = 0;
+                        else
+                            above = in_out[end_of_row + x - idata.width * channels_per_pixel - 1];
 
                         uint8_t value = floor((to_the_left + above) / 2.0);
 
-                        in_out[x] = in_out[x] + value;
+                        in_out[end_of_row + x] = in_out[end_of_row + x] + value;
                     }
                     continue;
                 case 4:
-                    if (y == 0) continue; // we don't have any pixels above so values are unchanged
-
                     for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
                     {
                         int32_t to_the_left;
@@ -175,7 +208,11 @@ namespace XIL {
                             above_and_to_the_left = in_out[end_of_row + x - (idata.width + 1ull) * channels_per_pixel - 1];
                         }
 
-                        int32_t above = in_out[end_of_row + x - idata.width * channels_per_pixel - 1];
+                        int32_t above;
+                        if (y == 0)
+                            above = 0;
+                        else
+                            above = in_out[end_of_row + x - idata.width * channels_per_pixel - 1];
 
                         // Paeth
                         int32_t p = to_the_left + above - above_and_to_the_left;
@@ -194,6 +231,9 @@ namespace XIL {
 
                         in_out[end_of_row + x] = in_out[end_of_row + x] + value;
                     }
+                    continue;
+                default:
+                    throw std::runtime_error("Unknown filter method (!= 4)");
                 }
             }
 
@@ -203,18 +243,18 @@ namespace XIL {
 
             auto is_filter_method_byte =
                 [&](uint8_t)
-            {
-                if ((byte_count % bytes_per_row) == 0)
                 {
-                    byte_count++;
-                    return true;
-                }
-                else
-                {
-                    byte_count++;
-                    return false;
-                }
-            };
+                    if ((byte_count % bytes_per_row) == 0)
+                    {
+                        byte_count++;
+                        return true;
+                    }
+                    else
+                    {
+                        byte_count++;
+                        return false;
+                    }
+                };
 
             auto erase_begin = std::remove_if(in_out.begin(), in_out.end(), is_filter_method_byte);
             in_out.erase(erase_begin, in_out.end());
