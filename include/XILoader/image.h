@@ -42,7 +42,7 @@ namespace XIL {
         {
         }
     public:
-        uint8_t* at_y(uint16_t y)
+        uint8_t* at_y(size_t y)
         {
             if (y >= m_Image.height)
                 throw std::runtime_error("The 'y' coordinate exceeded image height");
@@ -57,7 +57,7 @@ namespace XIL {
             return &m_Image.data[pixel_loc];
         }
 
-        uint8_t* operator[](uint16_t y)
+        uint8_t* operator[](size_t y)
         {
             return m_Image.channels ? at_y(y) : nullptr;
         }
