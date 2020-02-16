@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <algorithm>
 
 #include "utils.h"
 
@@ -50,7 +51,7 @@ namespace XIL {
                 throw std::runtime_error("The 'x' coordinate exceeded image width");
 
             size_t pixel_loc = m_Image.width * y;
-            pixel_loc += m_AtX;
+            pixel_loc += m_AtX ? m_AtX + 1 : m_AtX;
             pixel_loc *= m_Image.channels;
 
             return &m_Image.data[pixel_loc];
@@ -101,10 +102,17 @@ namespace XIL {
             return ok() ? m_Image.data_ptr() : nullptr;
         }
 
+        #ifdef _MSVC_LANG 
+            #pragma warning(push)
+            #pragma warning(disable:26812) // unscoped enum is intended here
+        #endif
         Format channels() const noexcept
         {
             return static_cast<Format>(m_Image.channels);
         }
+        #ifdef _MSVC_LANG
+            #pragma warning(pop)
+        #endif
 
         bool ok() const noexcept
         {
@@ -150,5 +158,18 @@ namespace XIL {
             return channels() == 3 ? GL_RGB : GL_RGBA;
         }
         #endif
+
+        void flip()
+        {
+            if (width() < 2 || !ok()) return;
+
+            for (size_t y = 0; y < height() / 2; y++)
+            {
+                std::swap_ranges(
+                    at_x(0).at_y(y),
+                    at_x(width() - 1).at_y(y),
+                    at_x(0).at_y(height() - y - 1));
+            }
+        }
     };
 }

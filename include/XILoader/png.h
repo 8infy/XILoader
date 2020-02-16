@@ -118,6 +118,9 @@ namespace XIL {
                     throw std::runtime_error("16bpc PNGs are not yet supported");
                 break;
             }
+
+            if (force_flip)
+                image.flip();
         }
     private:
         static void unfilter_values(const png_data& idata, ImageData::Container& in_out)
@@ -184,7 +187,7 @@ namespace XIL {
                         else
                             above = in_out[end_of_row + x - idata.width * channels_per_pixel - 1];
 
-                        uint8_t value = floor((to_the_left + above) / 2.0);
+                        uint8_t value = static_cast<uint8_t>((to_the_left + above) / 2);
 
                         in_out[end_of_row + x] = in_out[end_of_row + x] + value;
                     }
@@ -205,7 +208,10 @@ namespace XIL {
                         else
                         {
                             to_the_left = in_out[end_of_row + x - channels_per_pixel * bytes_per_channel];
-                            above_and_to_the_left = in_out[end_of_row + x - (idata.width + 1ull) * channels_per_pixel - 1];
+                            if (y == 0)
+                                above_and_to_the_left = 0;
+                            else
+                                above_and_to_the_left = in_out[end_of_row + x - (idata.width + 1ull) * channels_per_pixel - 1];
                         }
 
                         int32_t above;

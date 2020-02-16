@@ -367,12 +367,12 @@ namespace XIL {
 
             if (bits_left_for_current_byte() < count)
             {
-                count -= 8 - m_CurrentBit; // 1. skip current byte bits
-                skip_bytes(full_bytes);    // 2. skip full bytes
-                m_CurrentBit = count;      // 3. add whats left in count
+                count -= 8 - m_CurrentBit;                  // 1. skip current byte bits
+                skip_bytes(full_bytes);                     // 2. skip full bytes
+                m_CurrentBit = static_cast<uint8_t>(count); // 3. add whats left in count
             }
             else
-                m_CurrentBit += count;
+                m_CurrentBit += static_cast<uint8_t>(count);
         }
 
         uint32_t get_bits(uint8_t count)
@@ -402,6 +402,12 @@ namespace XIL {
                     count -= bits_left_for_current_byte();
                     flush_byte();
                 }
+            }
+
+            // would this even work?
+            if XIL_CONSTEXPR(host_endiannes() == byte_order::BIG)
+            {
+                value = XIL_U32_SWAP(value);
             }
 
             return value;

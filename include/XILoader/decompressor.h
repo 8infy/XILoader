@@ -3,9 +3,9 @@
 #include "data_stream.h"
 
 #define FIXED_LITLEN 288
-#define MAX_LITLEN 286
-#define MAX_DIST   30
-#define MAX_BITS   15
+#define MAX_LITLEN   286
+#define MAX_DIST     30
+#define MAX_BITS     15
 
 namespace XIL {
 
@@ -31,7 +31,6 @@ namespace XIL {
     public:
         static void inflate(ChunkedBitReader& bit_stream, ImageData::Container& uncompressed_stream)
         {
-
             bool is_final_block = false; // aka BFINAL
             do
             {
@@ -61,16 +60,14 @@ namespace XIL {
     private:
         static void inflate_dynamic(ChunkedBitReader& bit_stream, ImageData::Container& uncompressed_stream)
         {
-            auto retard_break = uncompressed_stream.size();
-
             static const uint8_t symbol_order[19] =
             { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
 
             uint16_t lengths[MAX_LITLEN + MAX_DIST];
-            memset(lengths, 0, MAX_LITLEN + MAX_DIST);
+            memset(lengths, 0, sizeof(uint16_t) * (MAX_LITLEN + MAX_DIST));
 
-            auto hlit  = bit_stream.get_bits(5) + 257;
-            auto hdist = bit_stream.get_bits(5) + 1;
+            auto hlit  = bit_stream.get_bits(5) + 257ull;
+            auto hdist = bit_stream.get_bits(5) + 1ull;
             auto hclen = bit_stream.get_bits(4) + 4;
 
             if (hlit > MAX_LITLEN)
@@ -216,10 +213,10 @@ namespace XIL {
         template<typename HuffmanT>
         static uint16_t decode_one(ChunkedBitReader& from, HuffmanT& with_tree)
         {
-            int32_t length = 1;
-            int32_t code   = 0;
-            int32_t first  = 0;
-            int32_t index  = 0;
+            int64_t length = 1;
+            int64_t code   = 0;
+            int64_t first  = 0;
+            int64_t index  = 0;
             int64_t count;
             auto next = &with_tree.lengths[1];
 
@@ -238,7 +235,11 @@ namespace XIL {
         }
 
         template<typename HuffmanTL, typename HuffmanTD>
-        static void decompress_block(ChunkedBitReader& from, HuffmanTL& litlen_tree, HuffmanTD& distance_tree, ImageData::Container& uncompressed_stream)
+        static void decompress_block(
+            ChunkedBitReader& from,
+            HuffmanTL& litlen_tree,
+            HuffmanTD& distance_tree,
+            ImageData::Container& uncompressed_stream)
         {
             size_t initial_size = uncompressed_stream.size();
             size_t block_index = initial_size;
@@ -270,7 +271,7 @@ namespace XIL {
 
                 if (symbol < 256)
                 {
-                    uncompressed_stream.push_back(symbol);
+                    uncompressed_stream.push_back(static_cast<uint8_t>(symbol));
                     block_index++;
                 }
                 else if (symbol > 256)
@@ -279,11 +280,13 @@ namespace XIL {
                     if (symbol >= 29)
                         throw std::runtime_error("Length symbol is outside of [29] range");
 
-                    length = length_base[symbol] + from.get_bits(length_extra[symbol]);
+                    auto extra_len_bits = static_cast<uint8_t>(length_extra[symbol]);
+                    length = static_cast<size_t>(length_base[symbol]) + from.get_bits(extra_len_bits);
 
                     symbol = decode_one(from, distance_tree);
 
-                    distance = distance_base[symbol] + from.get_bits(distance_extra[symbol]);
+                    auto extra_dist_bits = static_cast<uint8_t>(distance_extra[symbol]);
+                    distance = static_cast<size_t>(distance_base[symbol]) + from.get_bits(extra_dist_bits);
 
                     if (distance > block_index)
                         throw std::runtime_error("Distance is outside of the out block");
