@@ -123,12 +123,37 @@ namespace XIL {
                 image.flip();
         }
     private:
+        static uint8_t pixel_to_the_left(uint8_t* start_of_row, size_t x, size_t pixel_stride)
+        {
+            if (x <= pixel_stride) return 0;
+
+            auto* pixel = start_of_row + x - pixel_stride;
+
+            return *pixel;
+        }
+
+        static uint8_t pixel_above(uint8_t* start_of_row, size_t x, size_t y, size_t image_width)
+        {
+            if (y == 0) return 0;
+
+            auto* pixel = start_of_row + x - image_width - 1;
+
+            return *pixel;
+        }
+
+        static uint8_t pixel_above_and_to_the_left(uint8_t* start_of_row, size_t x, size_t y, size_t pixel_stride, size_t image_width)
+        {
+            if (x <= pixel_stride || y == 0) return 0;
+
+            auto* pixel = start_of_row + x - image_width - pixel_stride - 1;
+
+            return *pixel;
+        }
+
         static void unfilter_values(const png_data& idata, ImageData::Container& in_out)
         {
-            // 2 if we're dealing with with a 16bpp, 1 otherwise
-            size_t bytes_per_channel = idata.bit_depth <= 8 ? 1 : 2;
+            float channel_stride = 8.0f / idata.bit_depth;
 
-            // in other words bytes per pixel
             size_t channels_per_pixel = 0;
 
             if (idata.color_type == 0 || idata.color_type == 3)
@@ -136,106 +161,73 @@ namespace XIL {
             else if (idata.color_type == 2)
                 channels_per_pixel = 3;
             else if (idata.color_type == 4)
-                channels_per_pixel = bytes_per_channel;
+                channels_per_pixel = idata.bit_depth * 2;  // is this correct?
             else if (idata.color_type == 6)
                 channels_per_pixel = 4;
 
+            // TODO: make sure this works for weird bpcs
+            size_t pixel_stride = static_cast<size_t>(channels_per_pixel / channel_stride);
+            size_t true_byte_width = idata.width * pixel_stride;
+
             for (size_t y = 0; y < idata.height; y++)
             {
-                auto end_of_row = y * channels_per_pixel * idata.width + y;
+                auto start_of_row = y * true_byte_width + y;
+                auto* row_begin = &in_out[start_of_row];
 
-                uint8_t filter_method = in_out[end_of_row];
+                uint8_t filter_method = in_out[start_of_row];
 
                 switch (filter_method)
                 {
                 case 0:
                     continue;
                 case 1:
-                    for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
+                    for (size_t x = 1; x < true_byte_width + 1; x++)
                     {
-                        // pixel to the left is 0
-                        // value is unchanged
-                        if (x <= channels_per_pixel) continue;
-
-                        in_out[end_of_row + x] = in_out[end_of_row + x] + in_out[end_of_row + x - channels_per_pixel * bytes_per_channel];
+                        auto ptl = pixel_to_the_left(row_begin, x, pixel_stride);
+                        in_out[start_of_row + x] = in_out[start_of_row + x] + ptl;
                     }
                     continue;
                 case 2:
-                    if (y == 0) continue; // we don't have any pixels above so values are unchanged
-
-                    for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
+                    for (size_t x = 1; x < true_byte_width + 1; x++)
                     {
-                        in_out[end_of_row + x] = in_out[end_of_row + x] + in_out[end_of_row + x - idata.width * channels_per_pixel - 1];
+                        auto pa = pixel_above(row_begin, x, y, true_byte_width);
+                        in_out[start_of_row + x] = in_out[start_of_row + x] + pa;
                     }
                     continue;
                 case 3:
-                    for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
+                    for (size_t x = 1; x < true_byte_width + 1; x++)
                     {
-                        size_t to_the_left;
+                        auto ptl = pixel_to_the_left(row_begin, x, pixel_stride);
+                        auto pa = pixel_above(row_begin, x, y, true_byte_width);
 
-                        // pixel to the left is 0
-                        // value is unchanged
-                        if (x <= channels_per_pixel)
-                            to_the_left = 0;
-                        else
-                            to_the_left = in_out[end_of_row + x - channels_per_pixel * bytes_per_channel];
+                        uint8_t unfiltered_value = static_cast<uint8_t>((ptl + pa) / 2);
 
-                        size_t above;
-
-                        if (y == 0)
-                            above = 0;
-                        else
-                            above = in_out[end_of_row + x - idata.width * channels_per_pixel - 1];
-
-                        uint8_t value = static_cast<uint8_t>((to_the_left + above) / 2);
-
-                        in_out[end_of_row + x] = in_out[end_of_row + x] + value;
+                        in_out[start_of_row + x] = in_out[start_of_row + x] + unfiltered_value;
                     }
                     continue;
                 case 4:
-                    for (size_t x = 1; x < idata.width * channels_per_pixel + 1; x++)
+                    for (size_t x = 1; x < true_byte_width + 1; x++)
                     {
-                        int32_t to_the_left;
-                        int32_t above_and_to_the_left;
-
-                        // pixel to the left is 0
-                        // value is unchanged
-                        if (x <= channels_per_pixel)
-                        {
-                            to_the_left = 0;
-                            above_and_to_the_left = 0;
-                        }
-                        else
-                        {
-                            to_the_left = in_out[end_of_row + x - channels_per_pixel * bytes_per_channel];
-                            if (y == 0)
-                                above_and_to_the_left = 0;
-                            else
-                                above_and_to_the_left = in_out[end_of_row + x - (idata.width + 1ull) * channels_per_pixel - 1];
-                        }
-
-                        int32_t above;
-                        if (y == 0)
-                            above = 0;
-                        else
-                            above = in_out[end_of_row + x - idata.width * channels_per_pixel - 1];
+                        int32_t above = pixel_above(row_begin, x, y, true_byte_width);
+                        int32_t left = pixel_to_the_left(row_begin, x, pixel_stride);
+                        int32_t above_and_left = pixel_above_and_to_the_left(row_begin, x, y, pixel_stride, true_byte_width);
 
                         // Paeth
-                        int32_t p = to_the_left + above - above_and_to_the_left;
-                        int32_t pa = abs(p - to_the_left);
+                        int32_t p  = left + above - above_and_left;
+                        int32_t pa = abs(p - left);
                         int32_t pb = abs(p - above);
-                        int32_t pc = abs(p - above_and_to_the_left);
+                        int32_t pc = abs(p - above_and_left);
 
                         uint8_t value = 0;
 
                         if (pa <= pb && pa <= pc)
-                            value = to_the_left;
+                            value = left;
                         else if (pb <= pc)
                             value = above;
                         else
-                            value = above_and_to_the_left;
+                            value = above_and_left;
 
-                        in_out[end_of_row + x] = in_out[end_of_row + x] + value;
+                        in_out[start_of_row + x] = in_out[start_of_row + x] + value;
                     }
                     continue;
                 default:
@@ -244,13 +236,12 @@ namespace XIL {
             }
 
             // remove all scanline filter method bytes
-            size_t bytes_per_row = channels_per_pixel * idata.width + 1;
             size_t byte_count = 0;
 
             auto is_filter_method_byte =
                 [&](uint8_t)
                 {
-                    if ((byte_count % bytes_per_row) == 0)
+                    if ((byte_count % (true_byte_width + 1)) == 0)
                     {
                         byte_count++;
                         return true;

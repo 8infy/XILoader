@@ -7,7 +7,9 @@
 
 // variables for stbi to write
 // image size data to
-int x, y, z;
+static int x, y, z;
+static uint16_t passed = 0;
+static uint16_t failed = 0;
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -47,10 +49,22 @@ int x, y, z;
     ASSERT_LOADED(UNIQUE_VAR(xil_image)); \
     compare_each(UNIQUE_VAR(xil_image).data(), UNIQUE_VAR(stbi_image), static_cast<size_t>(x)* y* z)
 
+#define PRINT_TEST_RESULTS(passed_count, failed_count) \
+    std::cout << "\n\nTEST RESULTS: " \
+              << "passed: " << passed_count \
+              << " / failed: " \
+              << failed_count \
+              << "   (" << passed_count \
+              << "/" << passed_count + failed_count \
+              << ")" << std::endl;
+
 void compare_each(uint8_t* l, uint8_t* r, size_t size)
 {
     if (size == 0)
+    {
+        failed++;
         return;
+    }
 
     for (size_t i = 0; i < size; i++)
     {
@@ -58,10 +72,12 @@ void compare_each(uint8_t* l, uint8_t* r, size_t size)
         {
             std::cout << "FAILED " << "At pixel[" << i << "]" << " --> ";
             std::cout << "left was == " << AS_INT(l[i]) << ", right was == " << AS_INT(r[i]) << std::endl;
+            failed++;
             return;
         }
     }
 
+    passed++;
     std::cout << "PASSED" << std::endl;
 }
 
@@ -109,7 +125,7 @@ int main(int argc, char** argv)
 {
     TEST_BMP();
     TEST_PNG();
+    PRINT_TEST_RESULTS(passed, failed);
 
-    std::cin.get();
     return 0;
 }
