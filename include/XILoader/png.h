@@ -87,8 +87,8 @@ namespace XIL {
             // reconstruct the values by removing filters
             unfilter_values(idata, uncompressed_data);
 
-            // - just return if RGB/RGBA
-            // - do some more processing for palleted/sampled data
+            // - just return if 8bpc RGB/RGBA
+            // - do some more processing for palleted/sampled data/16bpc
             switch (idata.color_type)
             {
             case 0: // grayscale
@@ -98,10 +98,10 @@ namespace XIL {
                 image.m_Image.width = idata.width;
                 image.m_Image.height = idata.height;
 
-                if (idata.bit_depth == 8)
-                    image.m_Image.data = std::move(uncompressed_data);
-                else // translate 16bpc into 8 bpc
-                    throw std::runtime_error("16bpc PNGs are not yet supported");
+                if (idata.bit_depth == 16)
+                    downscale(uncompressed_data, image.channels());
+
+                image.m_Image.data = std::move(uncompressed_data);
                 break;
             case 3: // decode the palleted data
                 throw std::runtime_error("Palleted PNGs are not yet supported");
@@ -112,10 +112,10 @@ namespace XIL {
                 image.m_Image.width = idata.width;
                 image.m_Image.height = idata.height;
 
-                if (idata.bit_depth == 8)
-                    image.m_Image.data = std::move(uncompressed_data);
-                else // translate 16bpc into 8 bpc
-                    throw std::runtime_error("16bpc PNGs are not yet supported");
+                if (idata.bit_depth == 16)
+                    downscale(uncompressed_data, image.channels());
+
+                image.m_Image.data = std::move(uncompressed_data);
                 break;
             }
 
@@ -123,6 +123,29 @@ namespace XIL {
                 image.flip();
         }
     private:
+        static void downscale(ImageData::Container& in_out, uint8_t channels)
+        {
+            auto upscaled = std::move(in_out);
+            ImageData::Container downscaled;
+            downscaled.resize(in_out.size() / 2);
+
+            assert(!(upscaled.size() % 2));
+            for (size_t pix = 0; pix < upscaled.size(); pix += 2)
+            {
+                uint16_t upscaled_channel = *reinterpret_cast<uint16_t*>(&upscaled[pix]);
+
+                if XIL_CONSTEXPR (host_endiannes() == byte_order::BIG)
+                        upscaled_channel = XIL_U16_SWAP(upscaled_channel);
+
+                uint8_t downscaled_channel =
+                        floor((static_cast<float>(upscaled_channel) * XIL_BITS(8) / XIL_BITS(16)) + 0.5f);
+
+                downscaled.push_back(downscaled_channel);
+            }
+
+            in_out = std::move(downscaled);
+        }
+
         static uint8_t pixel_to_the_left(uint8_t* start_of_row, size_t x, size_t pixel_stride)
         {
             if (x <= pixel_stride) return 0;
