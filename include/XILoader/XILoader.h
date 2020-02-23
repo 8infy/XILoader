@@ -5,7 +5,7 @@
 #include "image.h"
 #include "bmp.h"
 #include "png.h"
-
+#include <iostream>
 namespace XIL {
 
     class Loader
@@ -28,7 +28,7 @@ namespace XIL {
             try {
                 return load_verbose(path, flip);
             }
-            catch (...) // suppress any exceptions
+            catch (const std::exception&) // suppress any exceptions
             {
                 return {};
             }
@@ -39,7 +39,7 @@ namespace XIL {
             try {
                 return load_raw_verbose(data, size, flip);
             }
-            catch (...) // suppress any exceptions
+            catch (const std::exception&) // suppress any exceptions
             {
                 return {};
             }

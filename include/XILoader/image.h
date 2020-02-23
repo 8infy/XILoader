@@ -161,6 +161,8 @@ namespace XIL {
             {
                 case 1:
                     return GL_LUMINANCE;
+                case 2:
+                    return GL_LUMINANCE_ALPHA;
                 case 3:
                     return GL_RGB;
                 case 4:

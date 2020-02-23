@@ -427,7 +427,7 @@ namespace XIL {
             if (count > 8)
                 throw std::runtime_error("Maximum bit count is 8, got a larger value");
 
-            if (m_CurrentBit + 1 < count)
+            if ((m_CurrentBit + 1 < count) || m_CurrentBit == UINT8_MAX)
                 flush_byte_reversed();
 
             uint8_t current_byte = current_chunk().data[current_chunk().active_byte];
@@ -437,10 +437,7 @@ namespace XIL {
 
             value = value >> ((m_CurrentBit + 1) - count);
 
-            if (m_CurrentBit + 1 == count)
-                m_CurrentBit = 0;
-            else
-                m_CurrentBit -= count;
+            m_CurrentBit -= count;
 
             return value;
         }

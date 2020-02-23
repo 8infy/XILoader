@@ -66,6 +66,13 @@ void compare_each(uint8_t* l, uint8_t* r, size_t size)
         return;
     }
 
+    if (!l)
+    {
+        std::cout << "FAILED (not loaded by xil)" << std::endl;
+        failed++;
+        return;
+    }
+
     for (size_t i = 0; i < size; i++)
     {
         if (!(l[i] == r[i]))
@@ -120,6 +127,17 @@ void TEST_PNG()
     LOAD_AND_COMPARE_EACH_FLIPPED("8bpc RGB 1419x1001 FLIPPED", PATH_TO("8bpc_rgb_1419x1001.png"));
     LOAD_AND_COMPARE_EACH("16bpc RGB 1419x1001", PATH_TO("16bpc_rgb_1419x1001.png"));
     LOAD_AND_COMPARE_EACH("16bpc RGBA 1473x1854", PATH_TO("16bpc_rgba_1473x1854.png"));
+
+    LOAD_AND_COMPARE_EACH("1bpc RGBA PALETTED 1473x1854", PATH_TO("1bpp_rgba_paletted_1473x1854.png"));
+    LOAD_AND_COMPARE_EACH("1bpc RGB PALETTED 1473x1854", PATH_TO("1bpp_rgb_paletted_1473x1854.png"));
+    LOAD_AND_COMPARE_EACH("4bpc RGBA PALETTED 1419x1001", PATH_TO("4bpp_rgba_paletted_1419x1001.png"));
+    LOAD_AND_COMPARE_EACH("4bpc RGB PALETTED 1419x1001", PATH_TO("4bpp_rgb_paletted_1419x1001.png"));
+    LOAD_AND_COMPARE_EACH("8bpc RGBA GRAYSCALE 1473x1854", PATH_TO("8bpc_rgba_grayscale_1473x1854.png"));
+    LOAD_AND_COMPARE_EACH("16bpc RGBA GRAYSCALE 1473x1854", PATH_TO("16bpc_rgba_grayscale_1473x1854.png"));
+    LOAD_AND_COMPARE_EACH("8bpc RGBA PALETTED 1473x1854", PATH_TO("8bpc_rgba_paletted_1473x1854.png"));
+    LOAD_AND_COMPARE_EACH("8bpc RGB PALETTED 1473x1854", PATH_TO("8bpc_rgb_paletted_1473x1854.png"));
+    LOAD_AND_COMPARE_EACH("8bpc RGB GRAYSCALE 1473x1854", PATH_TO("8bpc_rgb_grayscale_1419x1001.png"));
+    LOAD_AND_COMPARE_EACH("16bpc RGB GRAYSCALE 1473x1854", PATH_TO("16bpc_rgb_grayscale_1419x1001.png"));
     PRINT_END("PNG LOADING TEST DONE");
 }
 

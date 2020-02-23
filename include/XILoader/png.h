@@ -128,7 +128,7 @@ namespace XIL {
             {
             case 0: // grayscale
             case 4: // grayscale + alpha
-                image.m_Image.channels = 1;
+                image.m_Image.channels = idata.color_type ? 2 : 1;
                 image.m_Image.width = idata.width;
                 image.m_Image.height = idata.height;
 
