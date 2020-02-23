@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <string>
 #include <vector>
@@ -217,6 +217,13 @@ namespace XIL {
             return (byte >> offset) & XIL_BITS(count);
         }
 
+        uint8_t* data_ptr() const noexcept
+        {
+            assert(m_Data);
+
+            return static_cast<uint8_t*>(m_Data);
+        }
+
         void next_byte()
         {
             skip_n(1);
@@ -275,10 +282,12 @@ namespace XIL {
         std::vector<DataChunk> m_ChunkedData;
         size_t m_ActiveChunk;
         uint8_t m_CurrentBit;
+        bool m_ReverseMode;
     public:
         ChunkedBitReader() noexcept
             : m_ActiveChunk(0),
-            m_CurrentBit(0)
+            m_CurrentBit(0),
+            m_ReverseMode(false)
         {
         }
 
@@ -404,13 +413,53 @@ namespace XIL {
                 }
             }
 
-            // would this even work?
-            if XIL_CONSTEXPR(host_endiannes() == byte_order::BIG)
+            return value;
+        }
+
+        uint32_t get_bits_reversed(uint8_t count)
+        {
+            if (!m_ReverseMode)
             {
-                value = XIL_U32_SWAP(value);
+                m_ReverseMode = true;
+                m_CurrentBit = 7;
             }
 
+            if (count > 8)
+                throw std::runtime_error("Maximum bit count is 8, got a larger value");
+
+            if (m_CurrentBit + 1 < count)
+                flush_byte_reversed();
+
+            uint8_t current_byte = current_chunk().data[current_chunk().active_byte];
+            uint8_t mask = XIL_BITS(count) << ((m_CurrentBit + 1) - count);
+
+            uint8_t value = current_byte & mask;
+
+            value = value >> ((m_CurrentBit + 1) - count);
+
+            if (m_CurrentBit + 1 == count)
+                m_CurrentBit = 0;
+            else
+                m_CurrentBit -= count;
+
             return value;
+        }
+
+        uint32_t get_two_bytes_big_reversed()
+        {
+            auto left = get_bits_reversed(8);
+            auto right = get_bits_reversed(8);
+
+            uint16_t value = (left << 8) | right;
+        }
+
+        uint8_t reverse_byte(uint8_t byte)
+        {
+            byte = (byte & 0xF0) >> 4 | (byte & 0x0F) << 4;
+            byte = (byte & 0xCC) >> 2 | (byte & 0x33) << 2;
+            byte = (byte & 0xAA) >> 1 | (byte & 0x55) << 1;
+
+            return byte;
         }
 
         // skip_if_unused - skip the byte even if it hasn't been read from
@@ -427,6 +476,12 @@ namespace XIL {
             }
             else
                 next_chunk();
+        }
+
+        void flush_byte_reversed()
+        {
+            flush_byte();
+            m_CurrentBit = 7;
         }
 
         ~ChunkedBitReader()

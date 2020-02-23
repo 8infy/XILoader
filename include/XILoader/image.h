@@ -77,6 +77,8 @@ namespace XIL {
         enum Format
         {
             UNKNOWN = 0,
+            GRAY    = 1,
+            GRAY_A  = 2,
             RGB     = 3,
             RGBA    = 4
         };
@@ -155,7 +157,17 @@ namespace XIL {
             if (!ok())
                 return static_cast<decltype(GL_RGB)>(-1);
 
-            return channels() == 3 ? GL_RGB : GL_RGBA;
+            switch (channels())
+            {
+                case 1:
+                    return GL_LUMINANCE;
+                case 3:
+                    return GL_RGB;
+                case 4:
+                    return GL_RGBA;
+                default:
+                    return static_cast<decltype(GL_RGB)>(-1);
+            }
         }
         #endif
 
