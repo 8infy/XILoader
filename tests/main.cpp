@@ -68,7 +68,6 @@ void compare_each(uint8_t* l, uint8_t* r, size_t size)
 
     if (!l)
     {
-        std::cout << "FAILED (not loaded by xil)" << std::endl;
         failed++;
         return;
     }

@@ -5,7 +5,7 @@
 #include "image.h"
 #include "bmp.h"
 #include "png.h"
-#include <iostream>
+
 namespace XIL {
 
     class Loader
