@@ -2,17 +2,17 @@
 
 #include "data_stream.h"
 
-#define FIXED_LITLEN 288
-#define MAX_LITLEN   286
-#define MAX_DIST     30
-#define MAX_BITS     15
-
 namespace XIL {
 
     class Inflator
     {
     private:
-        template <size_t sym_count, size_t len_count = MAX_BITS + 1>
+        static constexpr size_t fixed_litlen = 288;
+        static constexpr size_t max_litlen   = 286;
+        static constexpr size_t max_dist     = 30;
+        static constexpr size_t max_bits     = 15;
+
+        template <size_t sym_count, size_t len_count = max_bits + 1>
         struct huffman_tree
         {
             huffman_tree()
@@ -63,16 +63,16 @@ namespace XIL {
             static const uint8_t symbol_order[19] =
             { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
 
-            uint16_t lengths[MAX_LITLEN + MAX_DIST];
-            memset(lengths, 0, sizeof(uint16_t) * (MAX_LITLEN + MAX_DIST));
+            uint16_t lengths[max_litlen + max_dist];
+            memset(lengths, 0, sizeof(uint16_t) * (max_litlen + max_dist));
 
             auto hlit  = bit_stream.get_bits(5) + 257ull;
             auto hdist = bit_stream.get_bits(5) + 1ull;
             auto hclen = bit_stream.get_bits(4) + 4;
 
-            if (hlit > MAX_LITLEN)
+            if (hlit > max_litlen)
                 throw std::runtime_error("HLIT cannot be greater than 286");
-            if (hdist > MAX_DIST)
+            if (hdist > max_dist)
                 throw std::runtime_error("HDIST cannot be greater than 30");
 
             for (uint16_t i = 0; i < hclen; i++)
@@ -117,8 +117,8 @@ namespace XIL {
             if (!lengths[256])
                 throw std::runtime_error("End of block code (256) is not present in the data");
 
-            huffman_tree<MAX_LITLEN> litlen_tree;
-            huffman_tree<MAX_DIST>   distance_tree;
+            huffman_tree<max_litlen> litlen_tree;
+            huffman_tree<max_dist>   distance_tree;
 
             construct_tree(litlen_tree, lengths, hlit);
             construct_tree(distance_tree, lengths + hlit, hdist);
@@ -128,15 +128,15 @@ namespace XIL {
 
         static void inflate_fixed(ChunkedBitReader& bit_stream, ImageData::Container& uncompressed_stream)
         {
-            static huffman_tree<FIXED_LITLEN> litlen_tree;
-            static huffman_tree<MAX_DIST>     distance_tree;
+            static huffman_tree<fixed_litlen> litlen_tree;
+            static huffman_tree<max_dist>     distance_tree;
 
             static bool constructed = false;
 
             if (!constructed)
             {
                 uint16_t symbol;
-                uint16_t lengths[FIXED_LITLEN];
+                uint16_t lengths[fixed_litlen];
 
                 for (symbol = 0; symbol < 144; symbol++)
                     lengths[symbol] = 8;
@@ -144,15 +144,15 @@ namespace XIL {
                     lengths[symbol] = 9;
                 for (; symbol < 280; symbol++)
                     lengths[symbol] = 7;
-                for (; symbol < FIXED_LITLEN; symbol++)
+                for (; symbol < fixed_litlen; symbol++)
                     lengths[symbol] = 8;
 
-                construct_tree(litlen_tree, lengths, FIXED_LITLEN);
+                construct_tree(litlen_tree, lengths, fixed_litlen);
 
-                for (symbol = 0; symbol < MAX_DIST; symbol++)
+                for (symbol = 0; symbol < max_dist; symbol++)
                     lengths[symbol] = 5;
 
-                construct_tree(distance_tree, lengths, MAX_DIST);
+                construct_tree(distance_tree, lengths, max_dist);
 
                 constructed = true;
             }
@@ -248,20 +248,20 @@ namespace XIL {
             size_t length;
             size_t distance;
 
-            static const uint16_t length_base[29] =
+            static constexpr uint16_t length_base[29] =
             { 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
               35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258 };
 
-            static const uint16_t length_extra[29] =
+            static constexpr uint16_t length_extra[29] =
             { 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2,
               2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0 };
 
-            static const uint16_t distance_base[30] =
+            static constexpr uint16_t distance_base[30] =
             { 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 
               97, 129, 193, 257, 385, 513, 769, 1025, 1537,
               2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577 };
 
-            static const uint16_t distance_extra[30] =
+            static constexpr uint16_t distance_extra[30] =
             { 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4,
               4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9,
               10, 10, 11, 11, 12, 12, 13, 13 };

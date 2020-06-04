@@ -442,12 +442,12 @@ namespace XIL {
             return value;
         }
 
-        uint32_t get_two_bytes_big_reversed()
+        uint16_t get_two_bytes_big_reversed()
         {
             auto left = get_bits_reversed(8);
             auto right = get_bits_reversed(8);
 
-            uint16_t value = (left << 8) | right;
+            return (left << 8) | right;
         }
 
         uint8_t reverse_byte(uint8_t byte)
